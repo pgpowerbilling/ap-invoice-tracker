@@ -1,0 +1,37 @@
+{
+ "app": "P&G Power AP Invoice Tracker",
+ "version": 1,
+ "repo": {
+  "owner": "pgpowerbilling",
+  "repo": "ap-invoice-tracker",
+  "branch": "main"
+ },
+ "users": {
+  "94aaadf32e3d354ffc70683a660a375a2adacbe3f79c7ef1e2ce3557f7834605": {
+   "salt": "Hc0WxdzshQ094Nnc/jAQ0g==",
+   "iter": 310000,
+   "iv": "H6c2qzoC5xbywQ4R",
+   "wrapped": "2akyCqbIF4/cEIr5R9CnnOKkGyNOp9h7iC4eiMVaHuVW9CgJIrpVfQ5b9Aydk+X8"
+  },
+  "afae9a3b9325647094aba9218a750237318a26756ae3c9c2e85e179ebf23263b": {
+   "salt": "VL/DxlSBRZjkBDoLv6bdxA==",
+   "iter": 310000,
+   "iv": "wQNjNO9Rc4HBZ5IW",
+   "wrapped": "n4wwIG+lg6Mw2EuuhofSLs5cKujgjYAfV0pdy3RXQWpRv86z7G+sjhNySYVxs7J9"
+  },
+  "c3c1f7e3b8007d7214bdca2e2eef39fc8686ec44f1b56924afa36e6b7bb5e93a": {
+   "salt": "tzIWNCJ0skbn/ZAYWRpl9Q==",
+   "iter": 310000,
+   "iv": "+Ms569czCtob3jKg",
+   "wrapped": "AITNj8SrI/agRRMNgglZR8PNR3rHqYKxNVlBY/98PIWLWartq31D3Fm059PsYg1K"
+  }
+ },
+ "pubKey": {
+  "key_ops": [],
+  "ext": true,
+  "kty": "EC",
+  "x": "GDJsZLFsVm6fEFKwBO9s9m78V0DFvCwI_2aoiv6B-vg",
+  "y": "OVVx5OaOOhLdxwJQxdP-oWdRni4R7LtoWwRrHOdcVtE",
+  "crv": "P-256"
+ }
+}

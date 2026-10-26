@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>P&amp;G AP Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f3f4f1; --panel:#ffffff; --ink:#16201b; --muted:#5d6b63; --line:#dde2dc;
+  --brand:#0f4d3a; --brand-ink:#ffffff; --accent:#c98a14;
+  --ok:#1f7a4d; --ok-bg:#e3f3ea; --warn:#9a6200; --warn-bg:#fdf1d8; --bad:#b3261e; --bad-bg:#fbe4e2;
+  --info:#2b5a8a; --info-bg:#e4eef8; --shadow:0 1px 2px rgba(0,0,0,.05),0 4px 16px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#101513; --panel:#18201c; --ink:#e7ece9; --muted:#9aa8a0; --line:#2a3530;
+    --brand:#3fa37d; --brand-ink:#08130e; --accent:#e0a83a;
+    --ok:#5cc690; --ok-bg:#163326; --warn:#e8b64d; --warn-bg:#352a12; --bad:#f08079; --bad-bg:#3a1a18;
+    --info:#86b6e8; --info-bg:#172a3c; --shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#101513; --panel:#18201c; --ink:#e7ece9; --muted:#9aa8a0; --line:#2a3530;
+  --brand:#3fa37d; --brand-ink:#08130e; --accent:#e0a83a;
+  --ok:#5cc690; --ok-bg:#163326; --warn:#e8b64d; --warn-bg:#352a12; --bad:#f08079; --bad-bg:#3a1a18;
+  --info:#86b6e8; --info-bg:#172a3c; --shadow:none;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 "IBM Plex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+.hidden{display:none!important}
+.wrap{max-width:1280px;margin:0 auto;padding:0 16px}
+
+/* login */
+#login{min-height:100vh;display:grid;place-items:center;padding:24px 16px}
+.login-card{width:100%;max-width:380px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:28px;box-shadow:var(--shadow)}
+.mark{display:flex;align-items:center;gap:10px;margin-bottom:20px}
+.mark .bolt{width:34px;height:34px;border-radius:8px;background:var(--brand);display:grid;place-items:center}
+.mark .bolt svg{width:18px;height:18px;fill:var(--brand-ink)}
+.mark b{display:block;font-size:16px}
+.mark span{color:var(--muted);font-size:13px}
+label{display:block;font-size:13px;font-weight:500;color:var(--muted);margin:14px 0 6px}
+input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--brand);outline-offset:-1px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:8px 14px;font-weight:500;white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--brand);color:var(--brand-ink);border-color:var(--brand)}
+.btn.small{padding:5px 10px;font-size:13px}
+.btn.paid{background:var(--ok);color:#fff;border-color:var(--ok)}
+.btn.inv{background:var(--info);color:#fff;border-color:var(--info)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.err{color:var(--bad);font-size:13px;min-height:18px;margin-top:10px}
+
+/* header */
+header{background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+header .wrap{display:flex;align-items:center;gap:12px;height:60px}
+header .mark{margin:0}
+.who{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
+.role{font-size:12px;padding:2px 8px;border-radius:99px;background:var(--info-bg);color:var(--info);font-weight:500}
+
+/* tiles */
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:20px 0}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow);text-align:left;cursor:pointer}
+.tile.active{outline:2px solid var(--brand)}
+.tile .k{font-size:12px;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.04em}
+.tile .v{font-size:26px;font-weight:600;margin-top:4px}
+.tile .s{font-size:13px;color:var(--muted)}
+.tile.bad .v{color:var(--bad)} .tile.warn .v{color:var(--warn)} .tile.ok .v{color:var(--ok)}
+
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.toolbar input{max-width:280px}
+.toolbar select{max-width:240px}
+.toolbar .sp{flex:1}
+
+/* list */
+.list{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:var(--shadow);margin-bottom:24px}
+.row{display:grid;grid-template-columns:150px minmax(180px,1.4fr) 110px 110px 150px 130px 130px 190px;gap:12px;align-items:center;padding:12px 16px;border-top:1px solid var(--line)}
+.row.head{border-top:0;background:var(--bg);font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:10px 16px}
+.row:not(.head):hover{background:color-mix(in srgb,var(--bg) 60%,transparent)}
+.row .vend b{display:block;font-weight:600}
+.row .vend span,.sub{font-size:12.5px;color:var(--muted)}
+.amt{text-align:right}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;padding:3px 9px;border-radius:99px}
+.chip.ok{background:var(--ok-bg);color:var(--ok)} .chip.warn{background:var(--warn-bg);color:var(--warn)}
+.chip.bad{background:var(--bad-bg);color:var(--bad)} .chip.info{background:var(--info-bg);color:var(--info)}
+.chip.mute{background:var(--bg);color:var(--muted)}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+.acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+.empty{padding:40px 16px;text-align:center;color:var(--muted)}
+.hint{display:inline-block;margin-top:4px;font-size:12px;color:var(--accent)}
+a.lnk{color:var(--brand);font-weight:500;text-decoration:none;background:none;border:0;padding:0}
+a.lnk:hover{text-decoration:underline}
+
+/* drawer / modal */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.4);display:grid;place-items:center;padding:16px;z-index:20}
+.modal{background:var(--panel);border-radius:14px;width:100%;max-width:520px;max-height:90vh;overflow:auto;padding:22px;border:1px solid var(--line)}
+.modal h3{margin:0 0 4px;font-size:18px}
+.modal .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.modal .foot{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+dl.kv{display:grid;grid-template-columns:130px 1fr;gap:8px 12px;margin:14px 0;font-size:14px}
+dl.kv dt{color:var(--muted)} dl.kv dd{margin:0}
+.log{font-size:13px;border-top:1px solid var(--line);margin-top:10px;padding-top:10px}
+.log div{padding:4px 0;color:var(--muted)}
+.banner{border:1px solid var(--line);background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 14px;margin-top:16px;font-size:14px}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;z-index:30;max-width:calc(100% - 32px)}
+
+@media (max-width:1100px){
+  .row.head{display:none}
+  .row{grid-template-columns:1fr auto;grid-template-areas:"vend amt" "meta meta" "tm st" "acts acts";gap:8px}
+  .row .vend{grid-area:vend}.row .amt{grid-area:amt}
+  .row .c-date,.row .c-due,.row .c-no{display:none}
+  .row .c-meta{grid-area:meta;display:block!important}
+  .row .c-timer{grid-area:tm}.row .c-status{grid-area:st;text-align:right}
+  .row .acts{grid-area:acts;justify-content:flex-start}
+}
+@media (min-width:1101px){ .row .c-meta{display:none} }
+@media (max-width:760px){
+  .tiles{grid-template-columns:1fr 1fr}
+  .toolbar input,.toolbar select{max-width:none;flex:1 1 140px}
+  header .who .nm,header .mark span{display:none}
+  .modal .row2{grid-template-columns:1fr}
+  dl.kv{grid-template-columns:1fr}
+  dl.kv dt{margin-top:6px}
+}
+</style>
+</head>
+<body>
+
+<section id="login">
+  <form class="login-card" id="loginForm" autocomplete="on">
+    <div class="mark">
+      <div class="bolt"><svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></div>
+      <div><b>P&amp;G Power Co.</b><span>Vendor Invoice Tracker</span></div>
+    </div>
+    <label for="u">Username</label>
+    <input id="u" name="username" autocomplete="username" required>
+    <label for="p">Password</label>
+    <input id="p" name="password" type="password" autocomplete="current-password" required>
+    <div class="err" id="loginErr"></div>
+    <button class="btn primary" style="width:100%;margin-top:6px" id="loginBtn">Sign in</button>
+  </form>
+</section>
+
+<section id="app" class="hidden">
+  <header><div class="wrap">
+    <div class="mark">
+      <div class="bolt"><svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></div>
+      <div><b>Vendor Invoice Tracker</b><span>P&amp;G Power Co. · Net 30 timers</span></div>
+    </div>
+    <div class="who"><span class="nm" id="meName"></span><span class="role" id="meRole"></span>
+      <button class="btn small hidden" id="settingsBtn">Settings</button>
+      <button class="btn small" id="logoutBtn">Sign out</button></div>
+  </div></header>
+
+  <main class="wrap">
+    <div id="tokenBanner" class="banner hidden"></div>
+    <div class="tiles" id="tiles"></div>
+    <div class="toolbar">
+      <input id="q" placeholder="Search invoice #, vendor, PO, location">
+      <select id="vendorF"><option value="">All vendors</option></select>
+      <select id="statusF">
+        <option value="open">Open (unpaid)</option>
+        <option value="overdue">Overdue</option>
+        <option value="soon">Due within 7 days</option>
+        <option value="notinvoiced">Not yet invoiced to DTE</option>
+        <option value="paid">Paid</option>
+        <option value="all">All</option>
+      </select>
+      <span class="sp"></span>
+      <button class="btn small" id="csvBtn">Export CSV</button>
+      <button class="btn small primary hidden" id="addBtn">+ Add invoice</button>
+    </div>
+    <div class="list" id="list"></div>
+    <p class="sub" style="margin:-8px 0 30px">Due date = invoice date + 30 days. Timers stop when an invoice is marked Paid. Data is encrypted; only these three logins can read it.</p>
+  </main>
+</section>
+
+<div id="modalRoot"></div>
+<div id="toast" class="toast hidden"></div>
+
+<script>
+(() => {
+'use strict';
+const subtle = crypto.subtle, te = new TextEncoder(), td = new TextDecoder();
+const b64 = buf => { const a = new Uint8Array(buf); let s = ''; for (let i = 0; i < a.length; i += 0x8000) s += String.fromCharCode.apply(null, a.subarray(i, i + 0x8000)); return btoa(s); };
+const unb64 = s => Uint8Array.from(atob(s.replace(/\s/g, '')), c => c.charCodeAt(0));
+const rand = n => crypto.getRandomValues(new Uint8Array(n));
+const sha256hex = async s => [...new Uint8Array(await subtle.digest('SHA-256', te.encode(s)))].map(b => b.toString(16).padStart(2, '0')).join('');
+const userKey = u => sha256hex('pg-ap:user:' + u.trim().toLowerCase());
+const invKey = (v, n) => sha256hex('pg-ap:inv:' + v.trim().toLowerCase() + '|' + String(n).trim().toLowerCase());
+async function decJson(key, box) { return JSON.parse(td.decode(await subtle.decrypt({ name: 'AES-GCM', iv: unb64(box.iv) }, key, unb64(box.ct)))); }
+async function encJson(key, obj) { const iv = rand(12); const ct = await subtle.encrypt({ name: 'AES-GCM', iv }, key, te.encode(JSON.stringify(obj))); return { iv: b64(iv), ct: b64(ct) }; }
+async function openSealed(privJwk, box) {
+  const priv = await subtle.importKey('jwk', privJwk, { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveKey']);
+  const epk = await subtle.importKey('jwk', box.epk, { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+  const k = await subtle.deriveKey({ name: 'ECDH', public: epk }, priv, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  return decJson(k, box);
+}
+
+const S = { config: null, dek: null, data: null, sha: null, me: null, filter: 'open' };
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const money = n => n == null || isNaN(n) ? '—' : n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+const cents = n => Math.round(n * 100);
+const fmtD = iso => { if (!iso) return '—'; const [y, m, d] = iso.split('-'); return `${+m}/${+d}/${y}`; };
+const todayISO = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+const addDays = (iso, n) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const dueEnd = iso => new Date(iso + 'T23:59:59');
+const dayDiff = (a, b) => Math.round((new Date(a + 'T12:00:00Z') - new Date(b + 'T12:00:00Z')) / 864e5);
+const ROLE = { billing: 'Billing · marks Invoiced', ap: 'AP · marks Paid' };
+function toast(msg, ms = 3200) { const t = $('toast'); t.textContent = msg; t.classList.remove('hidden'); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.add('hidden'), ms); }
+
+/* ---------- GitHub storage ---------- */
+const gh = () => S.config.repo;
+const api = (p) => `https://api.github.com/repos/${gh().owner}/${gh().repo}/contents/${p}`;
+async function ghGet(path) {
+  const r = await fetch(api(path) + `?ref=${gh().branch}&t=${Date.now()}`, { headers: { Authorization: `Bearer ${S.data.ghToken}`, Accept: 'application/vnd.github+json' }, cache: 'no-store' });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`GitHub read failed (${r.status})`);
+  const meta = await r.json();
+  let content = meta.content;
+  if (!content) {
+    const br = await fetch(`https://api.github.com/repos/${gh().owner}/${gh().repo}/git/blobs/${meta.sha}`, { headers: { Authorization: `Bearer ${S.data.ghToken}`, Accept: 'application/vnd.github+json' } });
+    content = (await br.json()).content;
+  }
+  return { sha: meta.sha, text: td.decode(unb64(content)) };
+}
+async function ghPut(path, text, sha, message, token = S.data.ghToken) {
+  const body = { message, content: b64(te.encode(text)), branch: gh().branch };
+  if (sha) body.sha = sha;
+  const r = await fetch(api(path), { method: 'PUT', headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' }, body: JSON.stringify(body) });
+  if (r.status === 409 || r.status === 422) { const e = new Error('conflict'); e.conflict = true; throw e; }
+  if (!r.ok) throw new Error(`GitHub save failed (${r.status})`);
+  return (await r.json()).content.sha;
+}
+async function pagesGet(path) { const r = await fetch(`${path}?t=${Date.now()}`, { cache: 'no-store' }); if (!r.ok) throw new Error(`Could not load ${path}`); return r.json(); }
+
+/* ---------- inbox (new invoices from the daily scan) ---------- */
+async function mergeInbox(data) {
+  let names;
+  try { names = data.ghToken ? JSON.parse((await ghGet('inbox/index.json'))?.text || '[]') : await pagesGet('inbox/index.json'); } catch { return 0; }
+  let added = 0;
+  for (const name of names) {
+    if (data.processedInbox.includes(name)) continue;
+    try {
+      const box = data.ghToken ? JSON.parse((await ghGet('inbox/' + name)).text) : await pagesGet('inbox/' + name);
+      const payload = await openSealed(data.privKey, box);
+      for (const it of payload.invoices) {
+        const id = (await invKey(it.vendor, it.invoiceNo)).slice(0, 16);
+        if (data.invoices.some(x => x.id === id)) continue;
+        data.invoices.push({ id, vendor: it.vendor, invoiceNo: String(it.invoiceNo), invoiceDate: it.invoiceDate, termsDays: 30,
+          dueDate: addDays(it.invoiceDate, 30), amount: it.amount, location: it.location || '', ref: it.ref || '', received: it.received,
+          source: it.source, billingHint: it.billingHint || '', note: it.note || '', invoiced: null, paid: null,
+          loggedAt: payload.addedAt, loggedBy: 'Outlook scan' });
+        data.audit.push({ at: payload.addedAt, by: 'Outlook scan', action: `Logged ${it.vendor} #${it.invoiceNo} (${money(it.amount)})` });
+        added++;
+      }
+      data.processedInbox.push(name);
+    } catch (e) { console.warn('inbox item skipped', name, e); }
+  }
+  return added;
+}
+
+/* ---------- load / save ---------- */
+async function loadData() {
+  const box = await pagesGet('data.enc.json');
+  let data = await decJson(S.dek, box);
+  S.sha = null;
+  if (data.ghToken) {
+    try { const f = await ghGet('data.enc.json'); data = await decJson(S.dek, JSON.parse(f.text)); S.sha = f.sha; }
+    catch (e) { console.warn(e); }
+  }
+  S.data = data;
+  if (!S.me) S.me = { key: S.myKey, ...data.profiles[S.myKey] };
+  const added = await mergeInbox(data);
+  if (added && data.ghToken) { try { await commit(() => {}, `Merge ${added} new invoice(s) from daily scan`); } catch (e) { console.warn(e); } }
+  if (added) toast(`${added} new invoice${added > 1 ? 's' : ''} added from the daily Outlook scan`);
+}
+
+async function commit(op, message) {
+  if (!S.data.ghToken) throw new Error('Saving is not connected yet. Jordan needs to add the GitHub key in Settings.');
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const f = await ghGet('data.enc.json');
+    const fresh = await decJson(S.dek, JSON.parse(f.text));
+    await mergeInbox(fresh);
+    op(fresh);
+    try {
+      S.sha = await ghPut('data.enc.json', JSON.stringify(await encJson(S.dek, fresh)), f.sha, message);
+      S.data = fresh; return;
+    } catch (e) { if (!e.conflict) throw e; }
+  }
+  throw new Error('Someone else saved at the same moment. Please try again.');
+}
+const audit = (d, action, id) => d.audit.push({ at: new Date().toISOString(), by: S.me.name, action, id });
+const findIn = (d, id) => d.invoices.find(x => x.id === id);
+
+/* ---------- status ---------- */
+function status(inv) {
+  if (inv.paid) {
+    const late = dayDiff(inv.paid.date, inv.dueDate);
+    return { key: 'paid', cls: 'ok', label: 'Paid', timer: late > 0 ? `Paid ${late}d late` : 'Paid on time', tcls: late > 0 ? 'bad' : 'ok' };
+  }
+  const ms = dueEnd(inv.dueDate) - Date.now();
+  if (ms < 0) { const d = Math.floor(-ms / 864e5); return { key: 'overdue', cls: 'bad', label: 'Overdue', timer: d === 0 ? 'Overdue today' : `Overdue ${d}d`, tcls: 'bad', ms }; }
+  const d = Math.floor(ms / 864e5), h = Math.floor((ms % 864e5) / 36e5);
+  const soon = ms <= 7 * 864e5;
+  return { key: soon ? 'soon' : 'open', cls: soon ? 'warn' : 'ok', label: soon ? 'Due soon' : 'Open', timer: `${d}d ${h}h left`, tcls: soon ? 'warn' : 'ok', ms };
+}
+
+/* ---------- render ---------- */
+function render() {
+  const invs = S.data.invoices;
+  const open = invs.filter(i => !i.paid);
+  const sum = arr => arr.reduce((a, i) => a + cents(i.amount || 0), 0) / 100;
+  const over = open.filter(i => status(i).key === 'overdue');
+  const soon = open.filter(i => status(i).key === 'soon');
+  const notInv = invs.filter(i => !i.invoiced);
+  const m = todayISO().slice(0, 7);
+  const paidM = invs.filter(i => i.paid && i.paid.date.slice(0, 7) === m);
+  const tile = (f, k, v, s, cls) => `<button class="tile ${cls} ${S.filter === f ? 'active' : ''}" data-f="${f}"><div class="k">${k}</div><div class="v mono">${v}</div><div class="s">${s}</div></button>`;
+  $('tiles').innerHTML =
+    tile('open', 'Open invoices', open.length, money(sum(open)), '') +
+    tile('overdue', 'Overdue', over.length, money(sum(over)), over.length ? 'bad' : '') +
+    tile('soon', 'Due in 7 days', soon.length, money(sum(soon)), soon.length ? 'warn' : '') +
+    tile('notinvoiced', 'Not invoiced to DTE', notInv.length, money(sum(notInv)), '');
+  $('tiles').querySelectorAll('.tile').forEach(b => b.onclick = () => { S.filter = b.dataset.f; $('statusF').value = S.filter; render(); });
+
+  const vendors = [...new Set(invs.map(i => i.vendor))].sort();
+  const vSel = $('vendorF'), cur = vSel.value;
+  vSel.innerHTML = '<option value="">All vendors</option>' + vendors.map(v => `<option ${v === cur ? 'selected' : ''}>${esc(v)}</option>`).join('');
+
+  const q = $('q').value.trim().toLowerCase();
+  let rows = invs.filter(i => {
+    const st = status(i).key;
+    if (S.filter === 'open' && i.paid) return false;
+    if (S.filter === 'overdue' && st !== 'overdue') return false;
+    if (S.filter === 'soon' && st !== 'soon') return false;
+    if (S.filter === 'paid' && !i.paid) return false;
+    if (S.filter === 'notinvoiced' && i.invoiced) return false;
+    if (vSel.value && i.vendor !== vSel.value) return false;
+    if (q && ![i.vendor, i.invoiceNo, i.ref, i.location].join(' ').toLowerCase().includes(q)) return false;
+    return true;
+  });
+  rows.sort((a, b) => (a.paid ? 1 : 0) - (b.paid ? 1 : 0) || a.dueDate.localeCompare(b.dueDate) || a.vendor.localeCompare(b.vendor));
+  const canInv = S.me.role === 'billing', canPay = S.me.role === 'ap';
+  const head = `<div class="row head"><div>Invoice #</div><div>Vendor · Location</div><div>Inv. date</div><div>Due date</div><div class="amt">Amount</div><div>Timer</div><div>Status</div><div style="text-align:right">Actions</div></div>`;
+  $('list').innerHTML = head + (rows.length ? rows.map(i => {
+    const st = status(i);
+    const invChip = i.invoiced ? `<span class="chip info"><span class="dot"></span>Invoiced ${fmtD(i.invoiced.date)}</span>` : `<span class="chip mute">Not invoiced</span>`;
+    const stChip = i.paid ? `<span class="chip ok"><span class="dot"></span>Paid ${fmtD(i.paid.date)}</span>` : `<span class="chip ${st.cls}"><span class="dot"></span>${st.label}</span>`;
+    const acts = [
+      canInv && !i.invoiced ? `<button class="btn small inv" data-a="inv" data-id="${i.id}">Mark Invoiced</button>` : '',
+      canPay && !i.paid ? `<button class="btn small paid" data-a="pay" data-id="${i.id}">Mark Paid</button>` : '',
+      `<button class="btn small" data-a="view" data-id="${i.id}">Details</button>`].join('');
+    return `<div class="row">
+      <div class="c-no mono"><a class="lnk" href="#" data-a="view" data-id="${i.id}">#${esc(i.invoiceNo)}</a></div>
+      <div class="vend"><b>${esc(i.vendor)}</b><span>${esc(i.location || i.ref || '')}</span>${!i.invoiced && i.billingHint && canInv ? `<div class="hint">${esc(i.billingHint)}</div>` : ''}</div>
+      <div class="c-date mono">${fmtD(i.invoiceDate)}</div>
+      <div class="c-due mono">${fmtD(i.dueDate)}</div>
+      <div class="c-meta sub"><a class="lnk mono" href="#" data-a="view" data-id="${i.id}">#${esc(i.invoiceNo)}</a> · Dated ${fmtD(i.invoiceDate)} · Due ${fmtD(i.dueDate)}</div>
+      <div class="amt mono">${money(i.amount)}</div>
+      <div class="c-timer"><span class="chip ${st.tcls}">${st.timer}</span></div>
+      <div class="c-status">${stChip}<div style="margin-top:4px">${invChip}</div></div>
+      <div class="acts">${acts}</div></div>`;
+  }).join('') : `<div class="empty">No invoices match this view.</div>`);
+  $('list').querySelectorAll('[data-a]').forEach(b => b.onclick = e => { e.preventDefault(); const id = b.dataset.id;
+    ({ inv: openInvoiced, pay: openPaid, view: openDetails })[b.dataset.a](id); });
+
+  const banner = $('tokenBanner');
+  if (!S.data.ghToken) {
+    banner.classList.remove('hidden');
+    banner.innerHTML = S.me.role === 'billing'
+      ? 'Saving is not connected yet. Open <b>Settings</b> and paste the GitHub key so Invoiced and Paid marks are saved for everyone.'
+      : 'View only for now: Jordan still needs to connect saving. Paid marks will work once he does.';
+  } else banner.classList.add('hidden');
+}
+
+/* ---------- modals ---------- */
+function modal(html, onMount) {
+  $('modalRoot').innerHTML = `<div class="scrim"><div class="modal" role="dialog" aria-modal="true">${html}</div></div>`;
+  const sc = $('modalRoot').firstChild;
+  sc.addEventListener('click', e => { if (e.target === sc) close(); });
+  sc.querySelectorAll('[data-close]').forEach(b => b.onclick = close);
+  onMount && onMount(sc);
+}
+function close() { $('modalRoot').innerHTML = ''; }
+async function run(btn, fn) {
+  btn.disabled = true; const t = btn.textContent; btn.textContent = 'Saving…';
+  try { await fn(); close(); render(); }
+  catch (e) { toast(e.message, 5000); btn.disabled = false; btn.textContent = t; }
+}
+const head = i => `<h3>${esc(i.vendor)} #${esc(i.invoiceNo)}</h3><div class="sub">${money(i.amount)} · Invoice date ${fmtD(i.invoiceDate)} · Due ${fmtD(i.dueDate)}</div>`;
+
+function openInvoiced(id) {
+  const i = findIn(S.data, id);
+  modal(`${head(i)}
+    <label>Date invoiced to DTE</label><input type="date" id="mDate" value="${todayISO()}">
+    <label>P&amp;G invoice / reference # (optional)</label><input id="mRef" placeholder="e.g. DTE invoice number">
+    ${i.billingHint ? `<p class="sub">${esc(i.billingHint)}</p>` : ''}
+    <div class="foot"><button class="btn" data-close>Cancel</button><button class="btn inv" id="mGo">Mark Invoiced</button></div>`, sc => {
+    sc.querySelector('#mGo').onclick = e => run(e.target, () => {
+      const date = sc.querySelector('#mDate').value, ref = sc.querySelector('#mRef').value.trim();
+      if (!date) throw new Error('Pick the invoiced date.');
+      return commit(d => { const x = findIn(d, id); x.invoiced = { date, ref, by: S.me.name, at: new Date().toISOString() }; audit(d, `Marked Invoiced ${x.vendor} #${x.invoiceNo} on ${fmtD(date)}${ref ? ' (ref ' + ref + ')' : ''}`, id); },
+        `Invoiced: ${i.vendor} #${i.invoiceNo}`);
+    });
+  });
+}
+function openPaid(id) {
+  const i = findIn(S.data, id);
+  modal(`${head(i)}
+    <label>Date paid</label><input type="date" id="mDate" value="${todayISO()}">
+    <label>Check / payment reference (optional)</label><input id="mRef" placeholder="e.g. check # or ACH ref">
+    ${i.note ? `<p class="sub">${esc(i.note)}</p>` : ''}
+    <div class="foot"><button class="btn" data-close>Cancel</button><button class="btn paid" id="mGo">Mark Paid</button></div>`, sc => {
+    sc.querySelector('#mGo').onclick = e => run(e.target, () => {
+      const date = sc.querySelector('#mDate').value, ref = sc.querySelector('#mRef').value.trim();
+      if (!date) throw new Error('Pick the paid date.');
+      return commit(d => { const x = findIn(d, id); x.paid = { date, ref, by: S.me.name, at: new Date().toISOString() }; audit(d, `Marked Paid ${x.vendor} #${x.invoiceNo} on ${fmtD(date)}${ref ? ' (ref ' + ref + ')' : ''}`, id); },
+        `Paid: ${i.vendor} #${i.invoiceNo}`);
+    });
+  });
+}
+function openDetails(id) {
+  const i = findIn(S.data, id), st = status(i);
+  const log = S.data.audit.filter(a => a.id === id || (a.action || '').includes(`#${i.invoiceNo}`)).slice(-12).reverse();
+  const canInv = S.me.role === 'billing', canPay = S.me.role === 'ap';
+  modal(`${head(i)}
+    <dl class="kv">
+      <dt>Timer</dt><dd><span class="chip ${st.tcls}">${st.timer}</span></dd>
+      <dt>Terms</dt><dd>Net ${i.termsDays} from invoice date</dd>
+      <dt>Location</dt><dd>${esc(i.location) || '—'}</dd>
+      <dt>PO / WO / ref</dt><dd>${esc(i.ref) || '—'}</dd>
+      <dt>Received</dt><dd>${fmtD(i.received)}</dd>
+      <dt>Invoiced to DTE</dt><dd>${i.invoiced ? `${fmtD(i.invoiced.date)} by ${esc(i.invoiced.by)}${i.invoiced.ref ? ' · ref ' + esc(i.invoiced.ref) : ''}` : 'Not yet'}</dd>
+      <dt>Paid</dt><dd>${i.paid ? `${fmtD(i.paid.date)} by ${esc(i.paid.by)}${i.paid.ref ? ' · ref ' + esc(i.paid.ref) : ''}` : 'Not yet'}</dd>
+      <dt>Source</dt><dd class="sub">${esc(i.source)}</dd>
+      ${i.note ? `<dt>Note</dt><dd>${esc(i.note)}</dd>` : ''}
+    </dl>
+    <div class="log"><b style="font-size:13px">History</b>${log.map(a => `<div>${new Date(a.at).toLocaleString()} · ${esc(a.by)} · ${esc(a.action)}</div>`).join('') || '<div>No changes yet.</div>'}</div>
+    <div class="foot">
+      ${canInv && i.invoiced ? '<button class="btn" id="undoInv">Undo Invoiced</button>' : ''}
+      ${canPay && i.paid ? '<button class="btn" id="undoPaid">Undo Paid</button>' : ''}
+      ${canInv ? '<button class="btn" id="edit">Edit</button>' : ''}
+      <button class="btn primary" data-close>Close</button></div>`, sc => {
+    const u1 = sc.querySelector('#undoInv'), u2 = sc.querySelector('#undoPaid'), ed = sc.querySelector('#edit');
+    u1 && (u1.onclick = e => run(e.target, () => commit(d => { const x = findIn(d, id); x.invoiced = null; audit(d, `Undid Invoiced on ${x.vendor} #${x.invoiceNo}`, id); }, `Undo invoiced: ${i.vendor} #${i.invoiceNo}`)));
+    u2 && (u2.onclick = e => run(e.target, () => commit(d => { const x = findIn(d, id); x.paid = null; audit(d, `Undid Paid on ${x.vendor} #${x.invoiceNo}`, id); }, `Undo paid: ${i.vendor} #${i.invoiceNo}`)));
+    ed && (ed.onclick = () => openEdit(id));
+  });
+}
+function invForm(i = {}) {
+  return `<div class="row2"><div><label>Vendor</label><input id="fV" list="vendList" value="${esc(i.vendor || '')}">
+    <datalist id="vendList">${[...new Set(S.data.invoices.map(x => x.vendor))].map(v => `<option value="${esc(v)}">`).join('')}</datalist></div>
+    <div><label>Invoice #</label><input id="fN" value="${esc(i.invoiceNo || '')}"></div></div>
+    <div class="row2"><div><label>Invoice date</label><input type="date" id="fD" value="${i.invoiceDate || ''}"></div>
+    <div><label>Amount (USD)</label><input id="fA" inputmode="decimal" value="${i.amount ?? ''}"></div></div>
+    <label>Location</label><input id="fL" value="${esc(i.location || '')}">
+    <label>PO / WO / reference</label><input id="fR" value="${esc(i.ref || '')}">
+    <label>Note</label><input id="fNote" value="${esc(i.note || '')}">`;
+}
+function readForm(sc) {
+  const v = sc.querySelector('#fV').value.trim(), n = sc.querySelector('#fN').value.trim(), d = sc.querySelector('#fD').value;
+  const a = Number(sc.querySelector('#fA').value.replace(/[$,\s]/g, ''));
+  if (!v || !n || !d || !isFinite(a) || a <= 0) throw new Error('Vendor, invoice #, invoice date and a positive amount are required.');
+  return { vendor: v, invoiceNo: n, invoiceDate: d, amount: Math.round(a * 100) / 100, location: sc.querySelector('#fL').value.trim(), ref: sc.querySelector('#fR').value.trim(), note: sc.querySelector('#fNote').value.trim() };
+}
+function openAdd() {
+  modal(`<h3>Add invoice</h3><div class="sub">For invoices that arrived outside email. Due date is set to invoice date + 30 days.</div>${invForm()}
+    <div class="foot"><button class="btn" data-close>Cancel</button><button class="btn primary" id="mGo">Add</button></div>`, sc => {
+    sc.querySelector('#mGo').onclick = e => run(e.target, async () => {
+      const f = readForm(sc); const key = await invKey(f.vendor, f.invoiceNo); const id = key.slice(0, 16);
+      if (S.data.invoices.some(x => x.id === id)) throw new Error('That vendor + invoice # is already logged.');
+      await commit(d => { if (findIn(d, id)) return; d.invoices.push({ id, ...f, termsDays: 30, dueDate: addDays(f.invoiceDate, 30), received: todayISO(), source: `Added manually by ${S.me.name}`, billingHint: '', invoiced: null, paid: null, loggedAt: new Date().toISOString(), loggedBy: S.me.name }); audit(d, `Added ${f.vendor} #${f.invoiceNo} (${money(f.amount)}) manually`, id); }, `Add: ${f.vendor} #${f.invoiceNo}`);
+      try { const s = await ghGet('seen.json'); const arr = JSON.parse(s.text); if (!arr.includes(key)) { arr.push(key); await ghPut('seen.json', JSON.stringify(arr), s.sha, 'Mark invoice as logged'); } } catch (e) { console.warn(e); }
+    });
+  });
+}
+function openEdit(id) {
+  const i = findIn(S.data, id);
+  modal(`<h3>Edit invoice</h3><div class="sub">Changes are recorded in the history.</div>${invForm(i)}
+    <div class="foot"><button class="btn" data-close>Cancel</button><button class="btn primary" id="mGo">Save</button></div>`, sc => {
+    sc.querySelector('#fV').disabled = sc.querySelector('#fN').disabled = true;
+    sc.querySelector('#mGo').onclick = e => run(e.target, () => {
+      const f = readForm(sc);
+      return commit(d => { const x = findIn(d, id); const ch = [];
+        for (const k of ['invoiceDate', 'amount', 'location', 'ref', 'note']) if (x[k] !== f[k]) { ch.push(`${k}: ${x[k] ?? '—'} → ${f[k]}`); x[k] = f[k]; }
+        x.dueDate = addDays(x.invoiceDate, x.termsDays || 30);
+        if (ch.length) audit(d, `Edited ${x.vendor} #${x.invoiceNo}: ${ch.join('; ')}`, id); }, `Edit: ${i.vendor} #${i.invoiceNo}`);
+    });
+  });
+}
+function openSettings() {
+  modal(`<h3>Settings</h3>
+    <p class="sub">Saving uses a GitHub access key limited to this one repository. It is stored encrypted inside the tracker, so only the three logins can use it.</p>
+    <label>GitHub fine-grained token (Contents: read &amp; write on ${esc(gh().owner)}/${esc(gh().repo)})</label>
+    <input id="tok" type="password" placeholder="${S.data.ghToken ? 'Connected · paste a new key to replace' : 'github_pat_…'}" autocomplete="off">
+    <div class="foot"><button class="btn" data-close>Close</button><button class="btn primary" id="mGo">Save key</button></div>`, sc => {
+    sc.querySelector('#mGo').onclick = e => run(e.target, async () => {
+      const tok = sc.querySelector('#tok').value.trim();
+      if (!tok) throw new Error('Paste the token first.');
+      const old = S.data.ghToken; S.data.ghToken = tok;
+      try {
+        const f = await ghGet('data.enc.json');
+        const fresh = await decJson(S.dek, JSON.parse(f.text));
+        await mergeInbox(fresh);
+        fresh.ghToken = tok; audit(fresh, 'Connected GitHub saving key');
+        S.sha = await ghPut('data.enc.json', JSON.stringify(await encJson(S.dek, fresh)), f.sha, 'Connect saving key', tok);
+        S.data = fresh;
+      } catch (err) { S.data.ghToken = old; throw new Error('That key could not save to the repository: ' + err.message); }
+      toast('Saving connected for all three logins.');
+    });
+  });
+}
+
+/* ---------- CSV ---------- */
+function csv() {
+  const cols = ['Vendor', 'Invoice #', 'Invoice Date', 'Due Date', 'Amount (USD)', 'Location', 'PO/WO/Ref', 'Received', 'Invoiced Date', 'Invoiced By', 'Paid Date', 'Paid By', 'Payment Ref', 'Status', 'Source'];
+  const q = s => `"${String(s ?? '').replace(/"/g, '""')}"`;
+  const lines = [cols.map(q).join(',')].concat(S.data.invoices.map(i => [i.vendor, i.invoiceNo, i.invoiceDate, i.dueDate, i.amount.toFixed(2), i.location, i.ref, i.received,
+    i.invoiced?.date, i.invoiced?.by, i.paid?.date, i.paid?.by, i.paid?.ref, status(i).label, i.source].map(q).join(',')));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([lines.join('\r\n')], { type: 'text/csv' }));
+  a.download = `PG-vendor-invoices-${todayISO()}.csv`; a.click();
+}
+
+/* ---------- auth ---------- */
+async function login(u, p) {
+  const k = await userKey(u);
+  const entry = S.config.users[k];
+  if (!entry) throw new Error('Username or password is incorrect.');
+  const base = await subtle.importKey('raw', te.encode(p), 'PBKDF2', false, ['deriveKey']);
+  const wk = await subtle.deriveKey({ name: 'PBKDF2', salt: unb64(entry.salt), iterations: entry.iter, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['unwrapKey']);
+  try { S.dek = await subtle.unwrapKey('raw', unb64(entry.wrapped), wk, { name: 'AES-GCM', iv: unb64(entry.iv) }, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']); }
+  catch { throw new Error('Username or password is incorrect.'); }
+  S.myKey = k; S.me = null;
+  await loadData();
+}
+function enterApp() {
+  $('login').classList.add('hidden'); $('app').classList.remove('hidden');
+  $('meName').textContent = S.me.name; $('meRole').textContent = ROLE[S.me.role] || S.me.role;
+  $('addBtn').classList.toggle('hidden', S.me.role !== 'billing');
+  $('settingsBtn').classList.toggle('hidden', S.me.role !== 'billing');
+  render();
+  clearInterval(S.tick); S.tick = setInterval(render, 60000);
+  clearInterval(S.poll); S.poll = setInterval(async () => { if (document.hidden || $('modalRoot').innerHTML) return; try { await loadData(); render(); } catch {} }, 5 * 60000);
+}
+$('loginForm').onsubmit = async e => {
+  e.preventDefault(); $('loginErr').textContent = ''; const b = $('loginBtn'); b.disabled = true; b.textContent = 'Signing in…';
+  try { await login($('u').value, $('p').value); $('p').value = ''; enterApp(); }
+  catch (err) { $('loginErr').textContent = err.message; }
+  finally { b.disabled = false; b.textContent = 'Sign in'; }
+};
+$('logoutBtn').onclick = () => location.reload();
+$('statusF').onchange = e => { S.filter = e.target.value; render(); };
+$('vendorF').onchange = render; $('q').oninput = render;
+$('csvBtn').onclick = csv; $('addBtn').onclick = openAdd; $('settingsBtn').onclick = openSettings;
+document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+pagesGet('config.json').then(c => S.config = c).catch(() => $('loginErr').textContent = 'Could not load the tracker. Refresh the page.');
+})();
+</script>
+</body>
+</html>
