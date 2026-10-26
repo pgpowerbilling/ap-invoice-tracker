@@ -214,10 +214,14 @@ function toast(msg, ms = 3200) { const t = $('toast'); t.textContent = msg; t.cl
 /* ---------- GitHub storage ---------- */
 const gh = () => S.config.repo;
 const api = (p) => `https://api.github.com/repos/${gh().owner}/${gh().repo}/contents/${p}`;
+const ghMsg = (st, what) => st === 401 ? `GitHub rejected the key (401: invalid or expired). Copy the full github_pat_… token again and re-paste it.`
+  : st === 403 ? `GitHub refused the ${what} (403: the key doesn't have Contents read & write on this repository).`
+  : st === 404 ? `GitHub couldn't find the repository with this key (404: the key isn't granted access to ap-invoice-tracker).`
+  : `GitHub ${what} failed (${st}).`;
 async function ghGet(path) {
   const r = await fetch(api(path) + `?ref=${gh().branch}&t=${Date.now()}`, { headers: { Authorization: `Bearer ${S.data.ghToken}`, Accept: 'application/vnd.github+json' }, cache: 'no-store' });
   if (r.status === 404) return null;
-  if (!r.ok) throw new Error(`GitHub read failed (${r.status})`);
+  if (!r.ok) throw new Error(ghMsg(r.status, 'read'));
   const meta = await r.json();
   let content = meta.content;
   if (!content) {
@@ -231,7 +235,7 @@ async function ghPut(path, text, sha, message, token = S.data.ghToken) {
   if (sha) body.sha = sha;
   const r = await fetch(api(path), { method: 'PUT', headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' }, body: JSON.stringify(body) });
   if (r.status === 409 || r.status === 422) { const e = new Error('conflict'); e.conflict = true; throw e; }
-  if (!r.ok) throw new Error(`GitHub save failed (${r.status})`);
+  if (!r.ok) throw new Error(ghMsg(r.status, 'save'));
   return (await r.json()).content.sha;
 }
 async function pagesGet(path) { const r = await fetch(`${path}?t=${Date.now()}`, { cache: 'no-store' }); if (!r.ok) throw new Error(`Could not load ${path}`); return r.json(); }
@@ -388,7 +392,7 @@ function close() { $('modalRoot').innerHTML = ''; }
 async function run(btn, fn) {
   btn.disabled = true; const t = btn.textContent; btn.textContent = 'Saving…';
   try { await fn(); close(); render(); }
-  catch (e) { toast(e.message, 5000); btn.disabled = false; btn.textContent = t; }
+  catch (e) { toast(e.message, 9000); btn.disabled = false; btn.textContent = t; }
 }
 const head = i => `<h3>${esc(i.vendor)} #${esc(i.invoiceNo)}</h3><div class="sub">${money(i.amount)} · Invoice date ${fmtD(i.invoiceDate)} · Due ${fmtD(i.dueDate)}</div>`;
 
@@ -495,11 +499,12 @@ function openSettings() {
   modal(`<h3>Settings</h3>
     <p class="sub">Saving uses a GitHub access key limited to this one repository. It is stored encrypted inside the tracker, so only the three logins can use it.</p>
     <label>GitHub fine-grained token (Contents: read &amp; write on ${esc(gh().owner)}/${esc(gh().repo)})</label>
-    <input id="tok" type="password" placeholder="${S.data.ghToken ? 'Connected · paste a new key to replace' : 'github_pat_…'}" autocomplete="off">
+    <input id="tok" type="text" spellcheck="false" autocapitalize="off" placeholder="${S.data.ghToken ? 'Connected · paste a new key to replace' : 'github_pat_…'}" autocomplete="off" data-lpignore="true" data-1p-ignore>
     <div class="foot"><button class="btn" data-close>Close</button><button class="btn primary" id="mGo">Save key</button></div>`, sc => {
     sc.querySelector('#mGo').onclick = e => run(e.target, async () => {
       const tok = sc.querySelector('#tok').value.trim();
       if (!tok) throw new Error('Paste the token first.');
+      if (!/^(github_pat_|ghp_)[A-Za-z0-9_]{20,}$/.test(tok)) throw new Error('That doesn\'t look like a GitHub token. It should start with github_pat_ and have no spaces. Copy it again from GitHub.');
       const old = S.data.ghToken; S.data.ghToken = tok;
       try {
         const f = await ghGet('data.enc.json');
@@ -508,7 +513,7 @@ function openSettings() {
         fresh.ghToken = tok; audit(fresh, 'Connected GitHub saving key');
         S.sha = await ghPut('data.enc.json', JSON.stringify(await encJson(S.dek, fresh)), f.sha, 'Connect saving key', tok);
         S.data = fresh;
-      } catch (err) { S.data.ghToken = old; throw new Error('That key could not save to the repository: ' + err.message); }
+      } catch (err) { S.data.ghToken = old; throw new Error(/fetch/i.test(err.message) ? 'Could not reach GitHub from this computer (network or firewall). Try again on another network.' : err.message); }
       toast('Saving connected for all three logins.');
     });
   });
