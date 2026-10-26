@@ -283,7 +283,7 @@ async function loadData() {
 }
 
 async function commit(op, message) {
-  if (!S.data.ghToken) throw new Error('Saving is not connected yet. Jordan needs to add the GitHub key in Settings.');
+  if (!S.data.ghToken) { const e = new Error(S.me.role === 'billing' ? 'Saving isn’t connected yet. Paste your GitHub key here first, then try again.' : 'Saving is not connected yet. Jordan needs to add the GitHub key in Settings.'); e.needsKey = true; throw e; }
   for (let attempt = 0; attempt < 4; attempt++) {
     const f = await ghGet('data.enc.json');
     const fresh = await decJson(S.dek, JSON.parse(f.text));
@@ -392,7 +392,7 @@ function close() { $('modalRoot').innerHTML = ''; }
 async function run(btn, fn) {
   btn.disabled = true; const t = btn.textContent; btn.textContent = 'Saving…';
   try { await fn(); close(); render(); }
-  catch (e) { toast(e.message, 9000); btn.disabled = false; btn.textContent = t; }
+  catch (e) { toast(e.message, 9000); if (e.needsKey && S.me.role === 'billing') { openSettings(); return; } btn.disabled = false; btn.textContent = t; }
 }
 const head = i => `<h3>${esc(i.vendor)} #${esc(i.invoiceNo)}</h3><div class="sub">${money(i.amount)} · Invoice date ${fmtD(i.invoiceDate)} · Due ${fmtD(i.dueDate)}</div>`;
 
