@@ -214,6 +214,7 @@ label.chk input{width:auto}
     <nav class="tabs" aria-label="Views">
       <a href="#active" data-nav="active">Active jobs<span class="ct" id="ct-active"></span></a>
       <a href="#open-items" data-nav="open-items">Open items<span class="ct" id="ct-open"></span></a>
+      <a href="#shutdowns" data-nav="shutdowns">Shutdowns<span class="ct" id="ct-shut"></span></a>
       <a href="#completed" data-nav="completed">Completed<span class="ct" id="ct-done"></span></a>
     </nav>
     <div class="mast-actions">
@@ -556,7 +557,7 @@ function route(){
   const h=(location.hash||"").replace(/^#/,"");
   closeOverlay(true);
   if(h.indexOf("job-")===0){S.view="job";const id=h.slice(4);if(id!==S.jobId){S.jobId=id;S.jobTab="locs";S.lf={q:"",status:"",crew:"",open:""};S.lsort={k:"n",dir:1};}}
-  else if(h==="completed")S.view="completed";else if(h==="open-items")S.view="open-items";else S.view="active";
+  else if(h==="completed")S.view="completed";else if(h==="open-items")S.view="open-items";else if(h==="shutdowns")S.view="shutdowns";else S.view="active";
   document.querySelectorAll("[data-nav]").forEach(a=>{if(a.dataset.nav===(S.view==="job"?"":S.view))a.setAttribute("aria-current","page");else a.removeAttribute("aria-current");});
   S._built=null;refresh();window.scrollTo(0,0);
 }
@@ -568,8 +569,9 @@ function refresh(){
   document.getElementById("ct-active").textContent=S.loaded?all.filter(([,j])=>!j.archived).length:"";
   document.getElementById("ct-done").textContent=S.loaded?all.filter(([,j])=>j.archived).length:"";
   document.getElementById("ct-open").textContent=S.loaded?openItems().length:"";
+  document.getElementById("ct-shut").textContent=S.loaded?shutItems().filter(o=>o.open).length:"";
   if(!S.loaded)return;
-  if(S.view==="job")renderJob();else if(S.view==="open-items")renderOpen();else renderList(S.view==="completed");
+  if(S.view==="job")renderJob();else if(S.view==="open-items")renderOpen();else if(S.view==="shutdowns")renderShut();else renderList(S.view==="completed");
   if(S.drawer)syncDrawer();
 }
 
@@ -670,6 +672,73 @@ function fillOpen(){
   tb.innerHTML=list.map(o=>{const ls=locState(o.L);
     const chip=o.kind==="md"?'<span class="chip c-bad">'+esc(o.s)+"</span>":(o.s==="Required"?'<span class="chip c-req">Required</span>':'<span class="chip c-sch">Scheduled</span>');
     return '<tr tabindex="0" data-id="'+esc(o.jid+"|"+o.L.id)+'"><td><div class="job-name">'+esc(jobName(o.j))+'</div></td><td class="mono">'+esc(o.L.locNo)+'</td><td class="wrapc">'+esc(o.L.address)+"</td><td>"+esc(o.label)+"</td><td>"+chip+"</td><td>"+fmtD(o.d)+"</td><td>"+({done:"Completed "+fmtD(o.L.done),sched:"Scheduled "+fmtD(o.L.sched),open:"Open"}[ls]||"")+"</td><td>"+esc(o.L.crew)+'</td><td class="wrapc sub">'+esc(o.L.notes)+"</td></tr>";}).join("");
+  bindRows(tb,v=>{const [jid,lid]=v.split("|");S.pendingLoc=lid;location.hash="job-"+jid;});
+}
+
+/* ---------- shutdowns view (UG / 40kV / SD) ---------- */
+function sdOutstanding(L){return flagOpen(L.ug)||flagOpen(L.kv40)||(L.sd&&!L.done);}
+function shutItems(){
+  const out=[];S.jobs.forEach((j,jid)=>{if(j.archived)return;locsOf(j).forEach(L=>{if(L.removed)return;
+    const ug=L.ug&&L.ug.s&&L.ug.s!=="N/A",kv=L.kv40&&L.kv40.s&&L.kv40.s!=="N/A";
+    if(ug||kv||L.sd)out.push({jid,j,L,ug,kv,sd:!!L.sd,open:sdOutstanding(L)});});});
+  return out;}
+function sdChip(f){const s=f&&f.s||"N/A";if(s==="N/A")return'<span class="chip c-na">—</span>';
+  const d=f.d?" "+esc(fmtD(f.d)):"";
+  return s==="Required"?'<span class="chip c-req">Required</span>':s==="Scheduled"?'<span class="chip c-sch">Scheduled'+d+"</span>":'<span class="chip c-done">Complete'+d+"</span>";}
+function renderShut(){
+  S.sdf=S.sdf||{q:"",need:"",state:"open",job:""};
+  if(S._built!=="shut"){
+    S._built="shut";
+    main.innerHTML='<h2 class="sec">Summary</h2><section class="tiles" id="sd-tiles"></section>'+
+      '<h2 class="sec">Jobs with UG, 40kV or shutdowns</h2><div class="tablebox"><table><thead><tr><th class="nosort">Job</th><th class="nosort">Type</th><th class="nosort">Locations</th><th class="nosort">UG (open / total)</th><th class="nosort">40kV (open / total)</th><th class="nosort">SD required (open / total)</th><th class="nosort">Outstanding locations</th><th class="nosort">Next scheduled</th></tr></thead><tbody id="sd-jobs"></tbody></table></div>'+
+      '<h2 class="sec">Locations</h2><div class="filters" role="search"><input type="search" id="sd-q" placeholder="Search job, address, crew, notes…" aria-label="Search shutdown locations">'+
+      '<select id="sd-job" aria-label="Job"></select>'+
+      '<select id="sd-need" aria-label="Requirement"><option value="">UG, 40kV or SD</option><option value="ug">Underground</option><option value="kv">40kV</option><option value="sd">Shutdown (SD) required</option></select>'+
+      '<select id="sd-state" aria-label="Status"><option value="open">Outstanding</option><option value="sched">Scheduled</option><option value="req">Required, not scheduled</option><option value="done">Done</option><option value="">All</option></select><span class="count" id="sd-count"></span></div>'+
+      '<div class="tablebox"><table><thead><tr><th class="nosort">Job</th><th class="nosort">Loc #</th><th class="nosort">Address</th><th class="nosort">Underground</th><th class="nosort">40kV</th><th class="nosort">SD</th><th class="nosort">Scheduled</th><th class="nosort">Completed</th><th class="nosort">Crew</th><th class="nosort">Notes</th></tr></thead><tbody id="sd-body"></tbody></table></div>';
+    document.getElementById("sd-q").value=S.sdf.q;document.getElementById("sd-need").value=S.sdf.need;document.getElementById("sd-state").value=S.sdf.state;
+    document.getElementById("sd-q").oninput=e=>{S.sdf.q=e.target.value;fillShut();};
+    ["job","need","state"].forEach(k=>document.getElementById("sd-"+k).onchange=e=>{S.sdf[k]=e.target.value;fillShut();});
+  }
+  fillShut();
+}
+function fillShut(){
+  const all=shutItems();const f=S.sdf;
+  // by-job summary
+  const by=new Map();all.forEach(o=>{let r=by.get(o.jid);if(!r){r={jid:o.jid,j:o.j,n:0,ug:0,ugO:0,kv:0,kvO:0,sd:0,sdO:0,open:0,next:""};by.set(o.jid,r);}
+    r.n++;if(o.ug){r.ug++;if(flagOpen(o.L.ug))r.ugO++;}if(o.kv){r.kv++;if(flagOpen(o.L.kv40))r.kvO++;}if(o.sd){r.sd++;if(!o.L.done)r.sdO++;}if(o.open)r.open++;
+    [o.L.ug,o.L.kv40].forEach(x=>{if(x&&x.s==="Scheduled"&&x.d&&x.d>=todayStr()&&(!r.next||x.d<r.next))r.next=x.d;});
+    if(o.sd&&!o.L.done&&o.L.sched&&o.L.sched>=todayStr()&&(!r.next||o.L.sched<r.next))r.next=o.L.sched;});
+  const jobs=[...by.values()].sort((a,b)=>b.open-a.open||jobName(a.j).localeCompare(jobName(b.j)));
+  let ugO=0,kvO=0,sdO=0,sched=0;all.forEach(o=>{if(flagOpen(o.L.ug))ugO++;if(flagOpen(o.L.kv40))kvO++;if(o.sd&&!o.L.done)sdO++;if([o.L.ug,o.L.kv40].some(x=>x&&x.s==="Scheduled"))sched++;});
+  document.getElementById("sd-tiles").innerHTML=
+    tile("Jobs affected",jobs.filter(r=>r.open).length,jobs.length+" active jobs have UG, 40kV or SD")+
+    tile("Outstanding locations",all.filter(o=>o.open).length,"UG/40kV not complete or SD not done",all.some(o=>o.open))+
+    tile("Open underground",ugO,"Required or Scheduled")+
+    tile("Open 40kV",kvO,"Required or Scheduled")+
+    tile("SD required, not done",sdO,"Location not completed yet");
+  const jb=document.getElementById("sd-jobs");
+  jb.innerHTML=jobs.length?jobs.map(r=>'<tr tabindex="0" data-id="'+esc(r.jid)+'"'+(f.job===r.jid?' style="outline:2px solid var(--blue);outline-offset:-2px"':"")+'><td><div class="job-name">'+esc(jobName(r.j))+'</div><div class="sub">'+esc(r.j.circuit?r.j.description:"")+"</div></td><td>"+esc(r.j.workType)+'</td><td class="mono">'+r.n+'</td><td class="mono">'+r.ugO+" / "+r.ug+'</td><td class="mono">'+r.kvO+" / "+r.kv+'</td><td class="mono">'+r.sdO+" / "+r.sd+"</td><td>"+(r.open?'<span class="chip c-req">'+r.open+" outstanding</span>":'<span class="chip c-done">All clear</span>')+"</td><td>"+fmtD(r.next)+"</td></tr>").join("")
+    :'<tr><td colspan="8"><div class="empty"><b>No UG, 40kV or shutdown locations</b>Locations with Underground or 40kV set, or SD required checked, show up here.</div></td></tr>';
+  bindRows(jb,id=>{S.sdf.job=S.sdf.job===id?"":id;document.getElementById("sd-job").value=S.sdf.job;fillShut();document.getElementById("sd-body").scrollIntoView({block:"nearest",behavior:"smooth"});});
+  const js=document.getElementById("sd-job");js.innerHTML='<option value="">All jobs</option>'+jobs.map(r=>'<option value="'+esc(r.jid)+'"'+(r.jid===f.job?" selected":"")+">"+esc(jobName(r.j))+(r.j.workType?" · "+esc(r.j.workType):"")+"</option>").join("");
+  // detail
+  const q=f.q.trim().toLowerCase();
+  const list=all.filter(o=>{const L=o.L;
+    if(f.job&&o.jid!==f.job)return false;
+    if(f.need==="ug"&&!o.ug)return false;if(f.need==="kv"&&!o.kv)return false;if(f.need==="sd"&&!o.sd)return false;
+    if(f.state==="open"&&!o.open)return false;
+    if(f.state==="done"&&o.open)return false;
+    if(f.state==="sched"&&![L.ug,L.kv40].some(x=>x&&x.s==="Scheduled")&&!(o.sd&&!L.done&&L.sched))return false;
+    if(f.state==="req"&&![L.ug,L.kv40].some(x=>x&&x.s==="Required")&&!(o.sd&&!L.done&&!L.sched))return false;
+    if(q&&![jobName(o.j),o.j.description,L.address,L.crew,L.locNo,L.notes].join(" ").toLowerCase().includes(q))return false;return true;});
+  const nextD=o=>{const ds=[o.L.ug,o.L.kv40].filter(x=>x&&x.s==="Scheduled"&&x.d).map(x=>x.d);if(o.L.sched)ds.push(o.L.sched);return ds.sort()[0]||"9999";};
+  list.sort((a,b)=>nextD(a).localeCompare(nextD(b))||jobName(a.j).localeCompare(jobName(b.j))||(a.L.n-b.L.n));
+  document.getElementById("sd-count").textContent=list.length+" of "+all.length+" locations";
+  const tb=document.getElementById("sd-body");
+  if(!list.length){tb.innerHTML='<tr><td colspan="10"><div class="empty"><b>'+(all.length?"No locations match these filters":"Nothing to show")+'</b>'+(all.length?"Change the filters or pick All.":"")+"</div></td></tr>";return;}
+  tb.innerHTML=list.map(o=>{const L=o.L;
+    return'<tr tabindex="0" data-id="'+esc(o.jid+"|"+L.id)+'"><td><div class="job-name">'+esc(jobName(o.j))+'</div></td><td class="mono">'+esc(L.locNo)+'</td><td class="wrapc">'+esc(L.address)+"</td><td>"+sdChip(L.ug)+"</td><td>"+sdChip(L.kv40)+"</td><td>"+(o.sd?(L.done?'<span class="chip c-done">SD · done</span>':'<span class="chip c-req">SD required</span>'):'<span class="chip c-na">—</span>')+"</td><td>"+fmtD(L.sched)+"</td><td>"+fmtD(L.done)+"</td><td>"+esc(L.crew)+'</td><td class="wrapc sub">'+esc(L.notes)+"</td></tr>";}).join("");
   bindRows(tb,v=>{const [jid,lid]=v.split("|");S.pendingLoc=lid;location.hash="job-"+jid;});
 }
 
