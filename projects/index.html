@@ -1,0 +1,993 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>P&amp;G Project Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* Layout: matches the P&G AP Invoice Tracker — white header with logo under a red/navy stripe, quiet gray page, navy-headed tables, left-ruled summary tiles. Single deliberate light look. */
+:root{
+  --bg:#f5f6f8; --panel:#ffffff; --zebra:#fafbfc; --hover:#eef2fb; --ink:#1b2333; --muted:#5b6475; --line:#d9dde4; --field:#c3c9d3;
+  --navy:#14286b; --navy-2:#0b1a4a; --red:#c8102e; --blue:#1f4fb8;
+  --ok:#1e6b3c; --ok-bg:#e6f2ea; --warn:#8a5a00; --warn-bg:#fdf3dc; --bad:#b0102a; --bad-bg:#fbe6e9; --info-bg:#e8eefa;
+  --f:"Source Sans 3",Arial,Helvetica,sans-serif;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--ink)}
+body{font:15px/1.5 var(--f);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+.mono{font-variant-numeric:tabular-nums}
+.wrap{max-width:1500px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.stripe{height:4px;background:linear-gradient(90deg,var(--red) 0 50%,var(--navy) 50% 100%)}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--panel)}
+.mast{background:var(--panel);position:sticky;top:env(safe-area-inset-top,0px);z-index:5;box-shadow:0 1px 0 var(--line)}
+.mast .wrap{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;padding-block:10px}
+.brand{display:flex;align-items:center;gap:14px;margin-right:auto}
+.brand img{height:46px;width:auto}
+.brand .t{border-left:1px solid var(--line);padding-left:14px}
+.brand b{display:block;font-size:17px;color:var(--navy);line-height:1.2}
+.brand span{color:var(--muted);font-size:13px}
+.tabs{display:flex;gap:2px;flex-wrap:wrap}
+.tabs a{color:var(--muted);text-decoration:none;font-weight:600;font-size:14px;padding:6px 10px;border-bottom:2px solid transparent}
+.tabs a:hover{color:var(--navy)}
+.tabs a[aria-current="page"]{color:var(--navy);border-bottom-color:var(--red)}
+.tabs a .ct{font-size:12px;margin-left:6px;padding:0 6px;border-radius:3px;background:var(--info-bg);color:var(--navy);font-variant-numeric:tabular-nums}
+.mast-actions{display:flex;gap:8px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--field);background:var(--panel);border-radius:4px;padding:7px 14px;font-weight:600;white-space:nowrap;color:var(--ink)}
+.btn:hover{border-color:var(--navy);color:var(--navy)}
+.btn.primary{background:var(--navy);color:#fff;border-color:var(--navy)}
+.btn.primary:hover{background:var(--navy-2);color:#fff}
+.btn.danger{color:var(--bad)}
+.btn.danger:hover{border-color:var(--bad);color:var(--bad)}
+.btn.sm{padding:4px 10px;font-size:13px}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.btn:focus-visible,a:focus-visible,tr[tabindex]:focus-visible,.subtabs button:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+main.wrap{padding-block:20px 60px;display:flex;flex-direction:column;gap:14px}
+.sec{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:6px 0 -4px;font-weight:700}
+.sec-h{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--navy);font-weight:700;margin-bottom:8px}
+.banner{border:1px solid #f0d58a;border-left:4px solid #d99a00;background:var(--warn-bg);color:#5c3d00;border-radius:4px;padding:10px 14px;font-size:14px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.tile{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--navy);border-radius:4px;padding:12px 16px;display:flex;flex-direction:column;min-width:0}
+.tile .k{font-size:13px;color:var(--muted);font-weight:600}
+.tile .v{font-size:28px;font-weight:700;margin-top:2px;color:var(--navy);line-height:1.2;font-variant-numeric:tabular-nums}
+.tile .s{font-size:13px;color:var(--ink)}
+.tile.alert{border-left-color:var(--red)} .tile.alert .v{color:var(--red)}
+.filters{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.filters input,.filters select{padding:8px 11px;border:1px solid var(--field);border-radius:4px;background:var(--panel);min-width:0}
+.filters input[type=search]{flex:1 1 260px;max-width:340px}
+.filters select{max-width:240px}
+.filters input:focus,.filters select:focus{outline:2px solid var(--blue);outline-offset:-1px;border-color:var(--blue)}
+.count{color:var(--muted);font-size:13px;margin-left:auto}
+.tablebox{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:4px}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:10px 12px;text-align:left;border-top:1px solid var(--line);vertical-align:top;white-space:nowrap}
+th{background:var(--navy);color:#fff;font-size:12.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;border-top:0;position:sticky;top:0;z-index:1;cursor:pointer;user-select:none}
+th.nosort{cursor:default}
+th .arr{margin-left:4px;font-size:10px;opacity:.85}
+tbody tr{cursor:pointer}
+tbody tr:nth-child(odd) td{background:var(--zebra)}
+tbody tr:hover td{background:var(--hover)}
+tr.removed td{color:var(--muted);text-decoration:line-through}
+td.locno{border-left:3px solid transparent}
+tr.done td.locno{border-left-color:var(--ok)}
+tr.sched td.locno{border-left-color:var(--blue)}
+td.wrapc{white-space:normal;min-width:220px;max-width:360px}
+.job-name{font-weight:700;color:var(--navy)}
+.sub{color:var(--muted);font-size:13px;white-space:normal}
+.late{color:var(--bad);font-weight:600}
+.bar{display:flex;align-items:center;gap:8px;min-width:150px}
+.bar .track{flex:1;height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.bar .fill{height:100%;background:var(--navy)}
+.bar .pct{font-size:13px;font-weight:600;min-width:46px;text-align:right}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;padding:2px 8px;border-radius:3px;border:1px solid transparent;line-height:1.4}
+.chips{display:flex;gap:4px;flex-wrap:wrap}
+.c-na{color:var(--muted);padding:2px 4px}
+.c-req{background:var(--warn-bg);color:var(--warn)}
+.c-sch{background:var(--info-bg);color:var(--navy)}
+.c-done{background:var(--ok-bg);color:var(--ok)}
+.c-bad{background:var(--bad-bg);color:var(--bad)}
+.c-stage{background:var(--panel);color:var(--muted);border-color:var(--line)}
+.empty{padding:40px 16px;text-align:center;color:var(--muted)}
+.empty b{display:block;font-size:17px;color:var(--navy);margin-bottom:4px}
+.back{color:var(--navy);text-decoration:none;font-weight:600;font-size:14px}
+.back:hover{text-decoration:underline}
+.jobhead{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between}
+.jobhead h1{margin:0;font-size:26px;line-height:1.2;color:var(--navy);text-wrap:balance}
+.jobhead .meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px;color:var(--muted);font-size:14px}
+.jobhead .acts{display:flex;gap:8px;flex-wrap:wrap}
+.details{background:var(--panel);border:1px solid var(--line);border-top:4px solid var(--navy);border-radius:4px;padding:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px 20px}
+.dl{display:flex;flex-direction:column;min-width:0}
+.dl .k{font-size:13px;color:var(--muted);font-weight:600}
+.dl .v{overflow-wrap:anywhere}
+.dl.wide{grid-column:1/-1}
+.note{font-size:13px;color:var(--muted);background:var(--bg);border-radius:4px;padding:8px 10px}
+.subtabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}
+.subtabs button{background:none;border:0;padding:8px 14px;font-weight:700;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.subtabs button[aria-selected="true"]{color:var(--navy);border-bottom-color:var(--red)}
+.hist{background:var(--panel);border:1px solid var(--line);border-radius:4px}
+.hist .row{display:grid;grid-template-columns:150px 140px 1fr;gap:10px;padding:9px 14px;border-top:1px solid var(--line);font-size:14px}
+.hist .row:first-child{border-top:0}
+.hist .t{font-size:13px;color:var(--muted)}
+@media (max-width:640px){.hist .row{grid-template-columns:1fr;gap:2px}}
+.scrim{position:fixed;inset:0;background:rgba(11,26,74,.45);z-index:40}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(560px,100%);background:var(--panel);z-index:41;border-left:4px solid var(--navy);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);padding-right:env(safe-area-inset-right,0px)}
+.drawer header,.modal header{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.drawer header h2,.modal header h2{margin:0;font-size:19px;color:var(--navy);margin-right:auto}
+.drawer .body,.modal .body{overflow:auto;padding:16px 18px;display:flex;flex-direction:column;gap:18px;flex:1}
+.drawer footer,.modal footer{display:flex;gap:8px;padding:12px 18px;border-top:1px solid var(--line);flex-wrap:wrap;align-items:center}
+.drawer footer .sp,.modal footer .sp{margin-left:auto}
+.modal{position:fixed;z-index:43;left:50%;top:50%;transform:translate(-50%,-50%);width:min(1180px,calc(100% - 24px));max-height:calc(100% - 24px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));background:var(--panel);border-radius:6px;border-top:4px solid var(--navy);display:flex;flex-direction:column}
+.modal.small{width:min(460px,calc(100% - 24px))}
+.scrim.top{z-index:42}
+fieldset{border:0;padding:0;margin:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px 12px}
+legend{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--navy);font-weight:700;margin-bottom:8px;padding:0}
+label.f{display:flex;flex-direction:column;gap:5px;font-size:13px;font-weight:600;color:var(--ink);min-width:0}
+label.f.wide{grid-column:1/-1}
+label.f input,label.f select,label.f textarea,.flagrow select,.flagrow input,.grid-edit input,.grid-edit select,.pastebox textarea{border:1px solid var(--field);background:var(--panel);border-radius:4px;padding:8px 10px;font-weight:400;color:var(--ink);min-width:0;width:100%}
+label.f input:focus,label.f select:focus,label.f textarea:focus,.flagrow select:focus,.flagrow input:focus,.grid-edit input:focus,.grid-edit select:focus,.pastebox textarea:focus{outline:2px solid var(--blue);outline-offset:-1px;border-color:var(--blue)}
+label.f textarea{min-height:64px;resize:vertical}
+label.f input:disabled,label.f select:disabled,label.f textarea:disabled{background:var(--bg)}
+label.chk{flex-direction:row;align-items:center;gap:8px;padding-top:22px;font-weight:600}
+label.chk input{width:auto}
+.flags{display:flex;flex-direction:column;gap:6px}
+.flagrow{display:grid;grid-template-columns:120px 1fr 1fr;gap:8px;align-items:center;font-size:14px}
+.flagrow .nm{font-weight:600}
+.grid-edit{overflow-x:auto;border:1px solid var(--line);border-radius:4px}
+.grid-edit th,.grid-edit td{padding:5px 6px;position:static}
+.grid-edit th{cursor:default}
+.grid-edit tbody tr{cursor:default}
+.grid-edit tbody tr td,.grid-edit tbody tr:hover td{background:var(--panel)}
+.grid-edit input,.grid-edit select{padding:5px 7px;width:auto}
+.grid-edit .w-xs{width:64px}.grid-edit .w-s{width:90px}.grid-edit .w-l{width:230px}
+.pastebox textarea{min-height:120px;font-size:13px}
+.row-inline{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom,0px));background:var(--navy);color:#fff;padding:10px 16px;border-radius:4px;font-size:14px;z-index:60;max-width:calc(100% - 32px)}
+.ro .w-only{display:none!important}
+@media (max-width:760px){.brand .t{display:none}.brand img{height:40px}.tile .v{font-size:24px}.filters input[type=search],.filters select{max-width:none;flex:1 1 140px}.flagrow{grid-template-columns:1fr 1fr}.flagrow .nm{grid-column:1/-1}}
+
+/* login + account bar (matches the AP Invoice Tracker) */
+#login{min-height:100vh;display:grid;place-items:center;padding:24px 16px}
+#login[hidden]{display:none}
+.login-card{width:100%;max-width:400px;background:var(--panel);border:1px solid var(--line);border-top:4px solid var(--red);border-radius:6px;padding:30px 28px}
+.login-logo{display:block;height:84px;margin:0 auto 10px}
+.login-title{text-align:center;font-size:18px;font-weight:700;color:var(--navy);margin:0}
+.login-sub{text-align:center;color:var(--muted);font-size:14px;margin:2px 0 8px}
+.login-card label{display:block;font-size:13px;font-weight:600;margin:14px 0 5px}
+.login-card input{width:100%;padding:9px 11px;border:1px solid var(--field);border-radius:4px;background:var(--panel)}
+.login-card input:focus{outline:2px solid var(--blue);outline-offset:-1px;border-color:var(--blue)}
+.err{color:var(--bad);font-size:13px;min-height:18px;margin-top:10px}
+.mast .toprow{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding-block:10px}
+.who{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px}
+.role{font-size:12px;padding:2px 8px;border-radius:3px;background:var(--info-bg);color:var(--navy);font-weight:600}
+.navrow{border-top:1px solid var(--line)}
+.navrow .wrap{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding-block:6px}
+#bannerWrap:empty{display:none}
+#bannerWrap{padding-top:16px}
+.foot{border-top:1px solid var(--line);padding-block:14px 30px;color:var(--muted);font-size:13px}
+.notadmin .a-only{display:none!important}
+.dstat{font-size:13px;color:var(--muted)}
+.dstat.dirty{color:var(--warn);font-weight:600}
+.ulist{border:1px solid var(--line);border-radius:4px}
+.ulist .u{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:9px 12px;border-top:1px solid var(--line)}
+.ulist .u:first-child{border-top:0}
+.ulist .u .acts{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.ulist select{border:1px solid var(--field);border-radius:4px;padding:4px 6px;background:var(--panel)}
+.okbox{background:var(--ok-bg);color:var(--ok);border-radius:4px;padding:10px 12px;font-size:14px}
+.okbox code{font-size:15px;font-weight:700;color:var(--ink);user-select:all}
+@media (max-width:760px){.who .nm{display:none}}
+</style>
+</head>
+<body>
+
+<section id="login">
+  <form class="login-card" id="loginForm" autocomplete="on">
+    <img class="login-logo" src="../pg-logo.jpg" alt="P&amp;G Power Co.">
+    <p class="login-title">Project Tracker</p>
+    <p class="login-sub">Sign in to continue</p>
+    <label for="u">Username</label>
+    <input id="u" name="username" autocomplete="username" required>
+    <label for="p">Password</label>
+    <input id="p" name="password" type="password" autocomplete="current-password" required>
+    <div class="err" id="loginErr" role="alert"></div>
+    <button class="btn primary" style="width:100%;margin-top:6px" id="loginBtn">Sign in</button>
+  </form>
+</section>
+
+<div id="app" hidden>
+<header class="mast"><div class="stripe"></div>
+  <div class="wrap toprow">
+    <div class="brand"><img src="../pg-logo.jpg" alt="P&amp;G Power Co."><div class="t"><b>Project Tracker</b><span>Jobs · Locations · Open items</span></div></div>
+    <div class="who"><span class="nm" id="meName"></span><span class="role" id="meRole"></span>
+      <button class="btn sm a-only" id="btn-logins" type="button">Logins</button>
+      <button class="btn sm a-only" id="btn-settings" type="button">Settings</button>
+      <button class="btn sm" id="btn-pw" type="button">Change password</button>
+      <button class="btn sm" id="btn-out" type="button">Sign out</button></div>
+  </div>
+  <div class="navrow"><div class="wrap">
+    <nav class="tabs" aria-label="Views">
+      <a href="#active" data-nav="active">Active jobs<span class="ct" id="ct-active"></span></a>
+      <a href="#open-items" data-nav="open-items">Open items<span class="ct" id="ct-open"></span></a>
+      <a href="#completed" data-nav="completed">Completed<span class="ct" id="ct-done"></span></a>
+    </nav>
+    <div class="mast-actions">
+      <button class="btn" id="btn-export" type="button">Export to Excel</button>
+      <button class="btn primary w-only" id="btn-new" type="button">+ New job</button>
+    </div>
+  </div></div>
+</header>
+<div class="wrap" id="bannerWrap"></div>
+<main class="wrap" id="main"><div class="empty"><b>Loading jobs…</b>Decrypting the job list.</div></main>
+<footer class="wrap foot">P&amp;G Power Co. · Project data is encrypted and visible only to authorized logins.</footer>
+</div>
+<div id="overlay"></div>
+
+<datalist id="dl-wt"><option>PTMM</option><option>COND</option><option>CEMI</option><option>VIPER</option><option>ATLAS</option><option>TROUBLE</option><option>WWC FU</option></datalist>
+<datalist id="dl-type"><option>POLE</option><option>Equipment</option><option>COA</option></datalist>
+<datalist id="dl-crew"></datalist>
+
+<script>
+(function(){
+"use strict";
+/* ---------- constants ---------- */
+const STAGES=["","Needs Hours","Needs Estimate","Needs Start Date","Started","Currently Working","On Hold","Complete"];
+const FLAG_KEYS=[["tree","Tree Trim","TT"],["ug","Underground","UG"],["kv40","40kV","40kV"],["traffic","Traffic Control","TC"],["hydro","Hydrovac","HV"]];
+const FLAG_STATES=["N/A","Required","Scheduled","Complete"];
+const JOB_GROUPS=[
+ ["Job",[["circuit","Sub / Circuit"],["workType","Work type","text","dl-wt"],["stage","Stage","stage"],["description","Job description","text",null,true]]],
+ ["Contract",[["po","Purchase Order (PO)"],["wo","Work Order (WO)"],["coh","COH"],["cohStatus","COH status"],["sc","Service center"]]],
+ ["Schedule",[["estStart","Est. start date","date"],["estFinish","Est. finish date","date"],["actStart","Actual start date","date"],["actFinish","Actual finish date","date"],["targetStart","COH target start","date"],["targetFinish","COH target finish","date"]]],
+ ["Preflight & bid",[["preflightSent","Preflight sent","date"],["preflightReceived","Preflight received","date"],["firmBid","Firm bid ($)"],["hydroPO","Hydrovac PR / PO #"]]],
+ ["Field",[["ohFacilitator","OH Facilitator"],["ugLeader","UG Area Leader"],["yard","Yard"]]],
+ ["Notes",[["notes","Notes / contractor comments","textarea",null,true]]]
+];
+const JOB_LABEL={};JOB_GROUPS.forEach(g=>g[1].forEach(f=>JOB_LABEL[f[0]]=f[1]));
+const LOC_GROUPS=[
+ ["Location",[["locNo","Location #"],["mapPg","Map page / week"],["region","Region / circuit"],["wo","Location WO"],["type","Type","text","dl-type"],["truck","Truck access","truck"],["poleSize","Pole size"],["address","Address","textarea",null,true]]],
+ ["Schedule",[["sched","Scheduled start","date"],["done","Completed date","date"],["crew","Crew #","text","dl-crew"],["photo","Photo"]]],
+ ["Hours",[["estHours","Est. crew hours","number"],["actHours","Completed hours","number"]]],
+ ["Miss Dig & shutdown",[["missDig","Miss Dig required","check"],["mdTicket","Miss Dig ticket"],["mdStart","Ticket start","date"],["mdGood","Good through","date"],["sd","Shutdown (SD) required","check"]]],
+ ["Notes",[["notes","Notes","textarea",null,true]]]
+];
+const LOC_LABEL={};LOC_GROUPS.forEach(g=>g[1].forEach(f=>LOC_LABEL[f[0]]=f[1]));FLAG_KEYS.forEach(f=>LOC_LABEL[f[0]]=f[1]);
+const EMPTY_JOB={circuit:"",workType:"",stage:"",sc:"",cohStatus:"",po:"",wo:"",coh:"",description:"",estStart:"",estFinish:"",targetStart:"",targetFinish:"",actStart:"",actFinish:"",preflightSent:"",preflightReceived:"",firmBid:"",hydroPO:"",ohFacilitator:"",ugLeader:"",yard:"",notes:"",archived:false};
+function emptyLoc(n){const L={n:n,locNo:String(n),mapPg:"",region:"",type:"",truck:"",poleSize:"",wo:"",address:"",estHours:null,actHours:null,sd:false,missDig:false,mdTicket:"",mdStart:"",mdGood:"",sched:"",done:"",crew:"",photo:"",notes:"",removed:false};FLAG_KEYS.forEach(f=>L[f[0]]={s:"N/A",d:""});return L;}
+(function(){const dl=document.getElementById("dl-crew");for(let i=1;i<=12;i++){const o=document.createElement("option");o.value="WPGP"+String(i).padStart(2,"0");dl.appendChild(o);}})();
+
+/* ---------- state ---------- */
+const S={jobs:new Map(),loaded:false,canWrite:false,view:"active",jobId:null,
+  f:{q:"",wt:"",stage:"",crew:"",open:""},sort:{k:"name",dir:1},
+  lf:{q:"",status:"",crew:"",open:""},lsort:{k:"n",dir:1},jobTab:"locs",drawer:null,oi:{q:"",flag:"",state:""},
+  config:null,dek:null,index:null,shas:{},me:null,myKey:null,pend:null,busy:0};
+const main=document.getElementById("main"),overlay=document.getElementById("overlay");
+
+/* ---------- helpers ---------- */
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const todayStr=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");};
+function fmtD(s){if(!s)return"";const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s);return m?(m[2]+"/"+m[3]+"/"+m[1].slice(2)):s;}
+function daysTo(s){if(!s)return null;const a=new Date(s+"T00:00:00"),b=new Date(todayStr()+"T00:00:00");return Math.round((a-b)/864e5);}
+function fmtN(v,dp){if(v==null||v==="")return"";const n=Number(v);if(!isFinite(n))return"";return n.toLocaleString(undefined,{maximumFractionDigits:dp==null?2:dp});}
+function newId(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+function jobName(j){return j.circuit||j.description||"Untitled job";}
+function locsOf(j){return Object.entries(j.locations||{}).map(([id,L])=>Object.assign({id},L)).sort((a,b)=>(a.n||0)-(b.n||0));}
+function locState(L){if(L.removed)return"removed";if(L.done)return"done";if(L.sched)return"sched";return"open";}
+function flagOpen(f){return f&&(f.s==="Required"||f.s==="Scheduled");}
+function mdAlert(L){if(L.removed||L.done||!L.missDig||!L.mdGood)return false;const d=daysTo(L.mdGood);return d!=null&&d<=7;}
+function stats(j){
+  const ls=locsOf(j).filter(L=>!L.removed);const st={total:ls.length,done:0,sched:0,est:0,act:0,estDone:0,open:{},md:0,crews:new Set()};
+  FLAG_KEYS.forEach(f=>st.open[f[0]]=0);
+  ls.forEach(L=>{if(L.done){st.done++;st.estDone+=Number(L.estHours)||0;}else if(L.sched)st.sched++;
+    st.est+=Number(L.estHours)||0;st.act+=Number(L.actHours)||0;
+    FLAG_KEYS.forEach(f=>{if(flagOpen(L[f[0]]))st.open[f[0]]++;});if(mdAlert(L))st.md++;if(L.crew)st.crews.add(L.crew.toUpperCase());});
+  st.rem=st.total-st.done;st.pct=st.total?st.done/st.total:null;st.openTotal=FLAG_KEYS.reduce((a,f)=>a+st.open[f[0]],0);return st;}
+function flagChip(f,short){
+  const s=f&&f.s||"N/A";
+  if(s==="N/A")return'<span class="chip c-na" title="N/A">—</span>';
+  if(s==="Required")return'<span class="chip c-req" title="'+esc(short)+' required">REQ</span>';
+  if(s==="Scheduled")return'<span class="chip c-sch" title="'+esc(short)+' scheduled">SCH'+(f.d?" "+esc(fmtD(f.d).slice(0,5)):"")+'</span>';
+  return'<span class="chip c-done" title="'+esc(short)+' complete">✓'+(f.d?" "+esc(fmtD(f.d).slice(0,5)):"")+'</span>';}
+let toastT;function toast(msg){let t=document.getElementById("toast");if(!t){t=document.createElement("div");t.id="toast";t.className="toast";t.setAttribute("role","status");document.body.appendChild(t);}t.textContent=msg;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,3200);}
+
+/* ---------- crypto (same scheme as the AP Invoice Tracker) ---------- */
+const subtle=crypto.subtle,te=new TextEncoder(),td=new TextDecoder();
+const b64=buf=>{const a=new Uint8Array(buf);let s="";for(let i=0;i<a.length;i+=0x8000)s+=String.fromCharCode.apply(null,a.subarray(i,i+0x8000));return btoa(s);};
+const unb64=s=>Uint8Array.from(atob(String(s).replace(/\s/g,"")),c=>c.charCodeAt(0));
+const rand=n=>crypto.getRandomValues(new Uint8Array(n));
+const hexId=n=>[...rand(n)].map(b=>b.toString(16).padStart(2,"0")).join("");
+const sha256hex=async s=>[...new Uint8Array(await subtle.digest("SHA-256",te.encode(s)))].map(b=>b.toString(16).padStart(2,"0")).join("");
+const userKey=u=>sha256hex("pg-pt:user:"+u.trim().toLowerCase());
+async function decJson(key,box){return JSON.parse(td.decode(await subtle.decrypt({name:"AES-GCM",iv:unb64(box.iv)},key,unb64(box.ct))));}
+async function encJson(key,obj){const iv=rand(12);const ct=await subtle.encrypt({name:"AES-GCM",iv},key,te.encode(JSON.stringify(obj)));return{iv:b64(iv),ct:b64(ct)};}
+async function pwKey(pw,salt,iter,uses){const base=await subtle.importKey("raw",te.encode(pw),"PBKDF2",false,["deriveKey"]);return subtle.deriveKey({name:"PBKDF2",salt,iterations:iter,hash:"SHA-256"},base,{name:"AES-GCM",length:256},false,uses);}
+async function wrapDek(pw,iter=310000){const salt=rand(16),iv=rand(12);const k=await pwKey(pw,salt,iter,["wrapKey"]);const w=await subtle.wrapKey("raw",S.dek,k,{name:"AES-GCM",iv});return{salt:b64(salt),iter,iv:b64(iv),wrapped:b64(w)};}
+const PW_ALPHA="ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+const genPw=()=>[0,1,2,3].map(()=>[...rand(5)].map(b=>PW_ALPHA[b%PW_ALPHA.length]).join("")).join("-");
+
+/* ---------- roles ---------- */
+const ROLES={admin:"Admin",editor:"Editor",viewer:"Viewer"};
+const isAdmin=()=>!!(S.me&&S.me.role==="admin");
+const hasToken=()=>!!(S.index&&S.index.ghToken);
+function applyRO(){S.canWrite=hasToken()&&!!S.me&&(S.me.role==="admin"||S.me.role==="editor");document.body.classList.toggle("ro",!S.canWrite);document.body.classList.toggle("notadmin",!isAdmin());renderBanner();}
+function renderBanner(){const b=document.getElementById("bannerWrap");if(!b)return;
+  if(!S.index||hasToken()){b.innerHTML="";return;}
+  b.innerHTML='<div class="banner">'+(isAdmin()?'Saving is not connected yet. Open <b>Settings</b> and paste the GitHub key so changes are saved for everyone.':'View only for now: saving still needs to be connected by an admin.')+"</div>";}
+
+/* ---------- GitHub storage ---------- */
+const R=()=>S.config.repo;
+const api=p=>"https://api.github.com/repos/"+R().owner+"/"+R().repo+"/contents/"+(R().base||"")+p;
+const ghHdr=tok=>({Authorization:"Bearer "+(tok||S.index.ghToken),Accept:"application/vnd.github+json"});
+const ghMsg=(st,what)=>st===401?"GitHub rejected the key (401: invalid or expired). Copy the full github_pat_… token again and re-paste it in Settings."
+  :st===403?"GitHub refused the "+what+" (403: the key doesn't have Contents read & write on "+R().repo+")."
+  :st===404?"GitHub couldn't find the file or repository with this key (404)."
+  :"GitHub "+what+" failed ("+st+").";
+async function ghGet(p,tok){
+  const r=await fetch(api(p)+"?ref="+R().branch+"&t="+Date.now(),{headers:ghHdr(tok),cache:"no-store"});
+  if(r.status===404)return null;if(!r.ok)throw new Error(ghMsg(r.status,"read"));
+  const meta=await r.json();let content=meta.content;
+  if(!content){const br=await fetch("https://api.github.com/repos/"+R().owner+"/"+R().repo+"/git/blobs/"+meta.sha,{headers:ghHdr(tok)});if(!br.ok)throw new Error(ghMsg(br.status,"read"));content=(await br.json()).content;}
+  return{sha:meta.sha,text:td.decode(unb64(content))};}
+async function ghList(p){const r=await fetch(api(p)+"?ref="+R().branch+"&t="+Date.now(),{headers:ghHdr(),cache:"no-store"});if(r.status===404)return[];if(!r.ok)throw new Error(ghMsg(r.status,"read"));return r.json();}
+async function ghPut(p,text,sha,message,tok){
+  const body={message,content:b64(te.encode(text)),branch:R().branch};if(sha)body.sha=sha;
+  const r=await fetch(api(p),{method:"PUT",headers:ghHdr(tok),body:JSON.stringify(body)});
+  if(r.status===409||r.status===422){const e=new Error("conflict");e.conflict=true;throw e;}
+  if(!r.ok)throw new Error(ghMsg(r.status,"save"));return(await r.json()).content.sha;}
+async function ghDel(p,sha,message){const r=await fetch(api(p),{method:"DELETE",headers:ghHdr(),body:JSON.stringify({message,sha,branch:R().branch})});if(!r.ok&&r.status!==404)throw new Error(ghMsg(r.status,"delete"));}
+async function pagesGet(p){const r=await fetch(p+"?t="+Date.now(),{cache:"no-store"});if(!r.ok)throw new Error("Could not load "+p+" ("+r.status+")");return r.json();}
+function errText(e){const m=(e&&e.message)||String(e);return /failed to fetch|networkerror|load failed/i.test(m)?"Could not reach GitHub from this computer (network or firewall). Your change was not saved. Try again.":m;}
+function writeErr(e){toast(errText(e));}
+function deepMerge(t,p){Object.keys(p).forEach(k=>{const v=p[k];if(v&&typeof v==="object"&&!Array.isArray(v)&&t[k]&&typeof t[k]==="object"&&!Array.isArray(t[k]))deepMerge(t[k],v);else t[k]=(v&&typeof v==="object")?JSON.parse(JSON.stringify(v)):v;});return t;}
+function setBusy(d){S.busy=Math.max(0,S.busy+d);document.body.style.cursor=S.busy?"progress":"";}
+
+/* ---------- load ---------- */
+async function loadIndex(){
+  let idx=await decJson(S.dek,await pagesGet("data/index.enc.json"));
+  if(idx.ghToken){try{const f=await ghGet("data/index.enc.json",idx.ghToken);if(f)idx=await decJson(S.dek,JSON.parse(f.text));}catch(e){console.warn(e);}}
+  S.index=idx;}
+async function loadJobs(){
+  const ids=Object.keys(S.index.jobs||{});const next=new Map();
+  let list=null;
+  if(hasToken()){try{list=await ghList("data/jobs");}catch(e){console.warn(e);}}
+  const shaBy={};(list||[]).forEach(x=>{shaBy[x.name.replace(/\.enc\.json$/,"")]=x.sha;});
+  await Promise.all(ids.map(async id=>{const file=S.index.jobs[id];
+    try{
+      if(list){
+        if(S.jobs.has(id)&&S.shas[file]&&S.shas[file]===shaBy[file]){next.set(id,S.jobs.get(id));return;}
+        const f=await ghGet("data/jobs/"+file+".enc.json");if(!f)return;
+        next.set(id,await decJson(S.dek,JSON.parse(f.text)));S.shas[file]=f.sha;
+      }else next.set(id,await decJson(S.dek,await pagesGet("data/jobs/"+file+".enc.json")));
+    }catch(e){console.warn("Job failed to load",id,e);if(S.jobs.has(id))next.set(id,S.jobs.get(id));}
+  }));
+  if(S.pend&&S.jobs.has(S.pend.jobId))next.set(S.pend.jobId,S.jobs.get(S.pend.jobId));
+  S.jobs=next;}
+async function loadAll(){await loadIndex();await loadJobs();S.loaded=true;
+  const prof=S.index.profiles&&S.index.profiles[S.myKey];if(prof)S.me=Object.assign({key:S.myKey},prof);}
+
+/* ---------- save ---------- */
+function canSave(){
+  if(!hasToken()){toast(isAdmin()?"Saving isn't connected yet. Paste the GitHub key in Settings.":"Saving isn't connected yet. An admin needs to add the GitHub key in Settings.",7000);if(isAdmin())openSettings();return false;}
+  if(!S.canWrite){toast("Your login is view-only.");return false;}
+  return true;}
+function stamp(j,hist){j.updatedAt=new Date().toISOString();j.updatedBy=S.me.name;
+  if(hist){(j.history=j.history||[]).push({t:j.updatedAt,by:S.me.name,text:String(hist).slice(0,1500)});if(j.history.length>600)j.history=j.history.slice(-600);}}
+async function reloadJob(jobId){try{const file=S.index.jobs[jobId];const f=file&&await ghGet("data/jobs/"+file+".enc.json");if(f){S.jobs.set(jobId,await decJson(S.dek,JSON.parse(f.text)));S.shas[file]=f.sha;}}catch(e){}refresh();}
+async function commitJob(jobId,op,hist,msg){
+  if(!canSave())return false;
+  const file=S.index.jobs[jobId];if(!file){toast("This job no longer exists. It may have been deleted.");return false;}
+  const p="data/jobs/"+file+".enc.json";setBusy(1);
+  try{
+    for(let a=0;a<4;a++){
+      const f=await ghGet(p);if(!f)throw new Error("This job was deleted by someone else.");
+      const fresh=await decJson(S.dek,JSON.parse(f.text));op(fresh);stamp(fresh,hist);
+      try{S.shas[file]=await ghPut(p,JSON.stringify(await encJson(S.dek,fresh)),f.sha,msg||"Project tracker: update job");S.jobs.set(jobId,fresh);refresh();return true;}
+      catch(e){if(!e.conflict)throw e;}
+    }
+    throw new Error("Someone else saved this job at the same moment. Try again.");
+  }catch(e){toast(errText(e),9000);await reloadJob(jobId);return false;}
+  finally{setBusy(-1);}
+}
+function jobUpdate(jobId,patch,hist){return commitJob(jobId,j=>deepMerge(j,patch),hist);}
+async function commitIndex(op,msg){
+  for(let a=0;a<4;a++){
+    const f=await ghGet("data/index.enc.json");const fresh=await decJson(S.dek,JSON.parse(f.text));op(fresh);
+    try{await ghPut("data/index.enc.json",JSON.stringify(await encJson(S.dek,fresh)),f.sha,msg);S.index=fresh;return;}catch(e){if(!e.conflict)throw e;}
+  }throw new Error("Someone else saved at the same moment. Try again.");}
+async function commitConfig(op,msg){
+  for(let a=0;a<4;a++){
+    const f=await ghGet("config.json");const fresh=JSON.parse(f.text);op(fresh);
+    try{await ghPut("config.json",JSON.stringify(fresh,null,1),f.sha,msg);S.config=fresh;return;}catch(e){if(!e.conflict)throw e;}
+  }throw new Error("Someone else saved at the same moment. Try again.");}
+async function createJob(doc,hist){
+  if(!canSave())return null;const id=newId("j-");const file=hexId(12);stamp(doc,hist);setBusy(1);
+  try{
+    S.shas[file]=await ghPut("data/jobs/"+file+".enc.json",JSON.stringify(await encJson(S.dek,doc)),null,"Project tracker: add job");
+    await commitIndex(ix=>{ix.jobs=ix.jobs||{};ix.jobs[id]=file;},"Project tracker: list new job");
+    S.jobs.set(id,doc);refresh();return id;
+  }catch(e){toast(errText(e),9000);return null;}finally{setBusy(-1);}
+}
+async function deleteJob(jobId){
+  if(!canSave())return;if(!isAdmin()){toast("Only an admin can delete jobs.");return;}
+  const j=S.jobs.get(jobId);const file=S.index.jobs[jobId];setBusy(1);
+  try{
+    await commitIndex(ix=>{delete ix.jobs[jobId];},"Project tracker: remove job");
+    try{const f=await ghGet("data/jobs/"+file+".enc.json");if(f)await ghDel("data/jobs/"+file+".enc.json",f.sha,"Project tracker: delete job file");}catch(e){console.warn(e);}
+    S.jobs.delete(jobId);toast("Deleted "+(j?jobName(j):"job"));location.hash=j&&j.archived?"completed":"active";refresh();
+  }catch(e){toast(errText(e),9000);}finally{setBusy(-1);}
+}
+
+/* ---------- drawer edits are saved together (one save per location visit) ---------- */
+function stage(locId,patch,hist){
+  const j=S.jobs.get(S.jobId);if(!j||!j.locations||!j.locations[locId])return;
+  if(!S.canWrite){canSave();return;}
+  if(S.pend&&(S.pend.locId!==locId||S.pend.jobId!==S.jobId))flushPending();
+  if(!S.pend)S.pend={jobId:S.jobId,locId,locNo:j.locations[locId].locNo,patch:{},hist:[]};
+  deepMerge(S.pend.patch,patch);S.pend.hist.push(String(hist).replace(/^Loc [^:]*: /,""));
+  deepMerge(j.locations[locId],patch);markDirty();fillJob();
+}
+function markDirty(){const s=document.getElementById("dr-status");if(!s)return;const d=!!(S.pend&&S.pend.locId===S.drawer);s.textContent=d?"Unsaved changes":"All changes saved";s.classList.toggle("dirty",d);}
+async function flushPending(){
+  const p=S.pend;if(!p)return true;S.pend=null;markDirty();
+  const ok=await commitJob(p.jobId,j=>{if(j.locations&&j.locations[p.locId])deepMerge(j.locations[p.locId],p.patch);},"Loc "+p.locNo+": "+p.hist.join("; "));
+  if(ok)toast("Saved Loc "+p.locNo);return ok;
+}
+window.addEventListener("beforeunload",e=>{if(S.pend){e.preventDefault();e.returnValue="";}});
+
+/* ---------- auth ---------- */
+async function login(u,p){
+  const k=await userKey(u);const entry=S.config.users[k];
+  if(!entry)throw new Error("Username or password is incorrect.");
+  const wk=await pwKey(p,unb64(entry.salt),entry.iter,["unwrapKey"]);
+  try{S.dek=await subtle.unwrapKey("raw",unb64(entry.wrapped),wk,{name:"AES-GCM",iv:unb64(entry.iv)},{name:"AES-GCM",length:256},true,["encrypt","decrypt"]);}
+  catch(e){throw new Error("Username or password is incorrect.");}
+  S.myKey=k;S.me=null;await loadAll();
+  if(!S.me)S.me={key:k,username:u.trim().toLowerCase(),name:u.trim(),role:"viewer"};
+}
+function enterApp(){
+  document.getElementById("login").hidden=true;document.getElementById("app").hidden=false;
+  document.getElementById("meName").textContent=S.me.name;document.getElementById("meRole").textContent=ROLES[S.me.role]||S.me.role;
+  applyRO();route();
+  clearInterval(S.poll);S.poll=setInterval(async()=>{if(document.hidden||S.pend||S.busy||overlay.innerHTML)return;try{await loadAll();applyRO();refresh();}catch(e){}},120000);
+}
+async function initLogin(){
+  try{S.config=await pagesGet("config.json");}catch(e){document.getElementById("loginErr").textContent="The tracker couldn't load its settings. Reload the page.";}
+  document.getElementById("loginForm").onsubmit=async e=>{
+    e.preventDefault();const err=document.getElementById("loginErr"),b=document.getElementById("loginBtn");err.textContent="";b.disabled=true;b.textContent="Signing in…";
+    try{await login(document.getElementById("u").value,document.getElementById("p").value);document.getElementById("p").value="";enterApp();}
+    catch(x){err.textContent=x.message||"Sign-in failed.";}
+    finally{b.disabled=false;b.textContent="Sign in";}
+  };
+  document.getElementById("btn-out").onclick=async()=>{if(S.pend)await flushPending();location.hash="";location.reload();};
+  document.getElementById("btn-settings").onclick=openSettings;
+  document.getElementById("btn-logins").onclick=openLogins;
+  document.getElementById("btn-pw").onclick=openPassword;
+}
+
+/* ---------- small modals: settings, logins, password ---------- */
+function smallModal(title,body,foot){
+  closeOverlay(true);
+  const scr=document.createElement("div");scr.className="scrim";const m=document.createElement("div");m.className="modal small";m.setAttribute("role","dialog");m.setAttribute("aria-modal","true");
+  m.innerHTML='<header><h2>'+esc(title)+'</h2><button class="btn sm" type="button" data-x>Close</button></header><div class="body">'+body+'</div><footer><span class="sub" data-msg></span><span class="sp"></span>'+foot+"</footer>";
+  overlay.appendChild(scr);overlay.appendChild(m);document.addEventListener("keydown",escKey);
+  scr.onclick=()=>closeOverlay();m.querySelectorAll("[data-x]").forEach(b=>b.onclick=()=>closeOverlay());
+  return m;}
+async function busyRun(btn,m,fn){const t=btn.textContent;btn.disabled=true;btn.textContent="Saving…";const msg=m.querySelector("[data-msg]");msg.textContent="";
+  try{await fn();}catch(e){msg.textContent=errText(e);}finally{btn.disabled=false;btn.textContent=t;}}
+function openSettings(){
+  if(!isAdmin())return;
+  const m=smallModal("Settings",'<p class="sub" style="margin:0">Saving uses a GitHub access key with <b>Contents: read &amp; write</b> on '+esc(R().owner)+"/"+esc(R().repo)+'. The key you already use for the AP Invoice Tracker works here. It is stored encrypted inside this tracker, so only these logins can use it.</p>'+
+    '<label class="f" for="tok">GitHub fine-grained token<input id="tok" type="text" spellcheck="false" autocapitalize="off" autocomplete="off" data-lpignore="true" data-1p-ignore placeholder="'+(hasToken()?"Connected · paste a new key to replace":"github_pat_…")+'"></label>',
+    '<button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="tok-save">Save key</button>');
+  m.querySelectorAll("[data-x]").forEach(b=>b.onclick=()=>closeOverlay());
+  m.querySelector("#tok-save").onclick=e=>busyRun(e.target,m,async()=>{
+    const tok=m.querySelector("#tok").value.trim();
+    if(!tok)throw new Error("Paste the token first.");
+    if(!/^(github_pat_|ghp_)[A-Za-z0-9_]{20,}$/.test(tok))throw new Error("That doesn't look like a GitHub token. It starts with github_pat_ and has no spaces.");
+    const f=await ghGet("data/index.enc.json",tok);if(!f)throw new Error("GitHub couldn't find the tracker data with this key.");
+    const fresh=await decJson(S.dek,JSON.parse(f.text));fresh.ghToken=tok;
+    await ghPut("data/index.enc.json",JSON.stringify(await encJson(S.dek,fresh)),f.sha,"Project tracker: connect saving key",tok);
+    S.index=fresh;applyRO();await loadJobs();refresh();closeOverlay();toast("Saving connected for all logins.");
+  });
+}
+function openPassword(){
+  const m=smallModal("Change password",'<label class="f" for="np1">New password (at least 10 characters)<input id="np1" type="password" autocomplete="new-password"></label><label class="f" for="np2">Confirm new password<input id="np2" type="password" autocomplete="new-password"></label>',
+    '<button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="np-save">Change password</button>');
+  m.querySelectorAll("[data-x]").forEach(b=>b.onclick=()=>closeOverlay());
+  m.querySelector("#np-save").onclick=e=>busyRun(e.target,m,async()=>{
+    const a=m.querySelector("#np1").value,b=m.querySelector("#np2").value;
+    if(a.length<10)throw new Error("Use at least 10 characters.");if(a!==b)throw new Error("The two passwords don't match.");
+    if(!hasToken())throw new Error("Saving isn't connected yet, so the password can't be changed.");
+    const entry=await wrapDek(a);await commitConfig(c=>{c.users[S.myKey]=entry;},"Project tracker: change password");
+    closeOverlay();toast("Password changed. Use it next time you sign in.");
+  });
+}
+function openLogins(){
+  if(!isAdmin())return;
+  const draw=()=>{
+    const profs=S.index.profiles||{};const keys=Object.keys(S.config.users||{});
+    const rows=keys.map(k=>{const p=profs[k]||{username:"(unknown)",name:"(no profile)",role:"viewer"};const me=k===S.myKey;
+      return'<div class="u" data-k="'+k+'"><div><b>'+esc(p.name)+'</b> <span class="sub">'+esc(p.username)+(me?" · you":"")+'</span></div><div class="acts">'+
+        (me?'<span class="role">'+esc(ROLES[p.role]||p.role)+"</span>":'<select data-role aria-label="Role for '+esc(p.name)+'">'+Object.keys(ROLES).map(r=>'<option value="'+r+'"'+(r===p.role?" selected":"")+">"+ROLES[r]+"</option>").join("")+'</select><button class="btn sm" type="button" data-reset>Reset password</button><button class="btn sm danger" type="button" data-rm>Remove</button>')+"</div></div>";}).join("");
+    return'<div class="sec-h" style="margin:0">Current logins</div><div class="ulist">'+rows+'</div>'+
+      '<div class="sec-h" style="margin:4px 0 0">Add a login</div><fieldset style="grid-template-columns:1fr 1fr">'+
+      '<label class="f" for="nu-name">Full name<input id="nu-name" autocomplete="off" placeholder="e.g. General Foreman name"></label>'+
+      '<label class="f" for="nu-user">Username<input id="nu-user" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="e.g. jdoe"></label>'+
+      '<label class="f" for="nu-role">Role<select id="nu-role"><option value="editor" selected>Editor — add/edit jobs &amp; locations</option><option value="viewer">Viewer — read &amp; export only</option><option value="admin">Admin — everything, incl. logins</option></select></label>'+
+      '<label class="f" for="nu-pw">Password<input id="nu-pw" type="text" autocomplete="off" spellcheck="false"></label></fieldset>'+
+      '<div class="row-inline"><button class="btn" type="button" id="nu-gen">Generate password</button><span class="sub">At least 10 characters. Give the username and password to the person directly.</span></div><div id="nu-done"></div>';
+  };
+  const m=smallModal("Logins",draw(),'<button class="btn" type="button" data-x>Close</button><button class="btn primary" type="button" id="nu-save">Create login</button>');
+  m.style.width="min(640px,calc(100% - 24px))";
+  const bind=()=>{
+    const body=m.querySelector(".body");
+    body.querySelector("#nu-gen").onclick=()=>{body.querySelector("#nu-pw").value=genPw();};
+    body.querySelectorAll(".u[data-k]").forEach(row=>{const k=row.dataset.k;const p=(S.index.profiles||{})[k]||{};
+      const sel=row.querySelector("[data-role]");if(sel)sel.onchange=async()=>{if(!hasToken()){toast("Connect saving in Settings first.");return;}try{await commitIndex(ix=>{ix.profiles[k]=Object.assign({},ix.profiles[k],{role:sel.value});},"Project tracker: change role");toast(p.name+" is now "+ROLES[sel.value]);}catch(e){toast(errText(e));}};
+      const rs=row.querySelector("[data-reset]");if(rs)rs.onclick=async()=>{if(!hasToken()){toast("Connect saving in Settings first.");return;}const pw=genPw();
+        try{const entry=await wrapDek(pw);await commitConfig(c=>{c.users[k]=entry;},"Project tracker: reset password");body.querySelector("#nu-done").innerHTML='<div class="okbox">New password for <b>'+esc(p.name)+'</b> ('+esc(p.username)+'): <code>'+esc(pw)+"</code><br>Give it to them directly. It is not shown again.</div>";}catch(e){toast(errText(e));}};
+      const rm=row.querySelector("[data-rm]");if(rm)rm.onclick=()=>confirmBox("Remove "+(p.name||"this login")+"?","They will no longer be able to sign in with this login.","Remove login",async()=>{
+        try{await commitConfig(c=>{delete c.users[k];},"Project tracker: remove login");await commitIndex(ix=>{delete ix.profiles[k];},"Project tracker: remove login profile");body.innerHTML=draw();bind();toast("Login removed");}catch(e){toast(errText(e));}});
+    });
+  };
+  bind();
+  m.querySelector("#nu-save").onclick=e=>busyRun(e.target,m,async()=>{
+    const body=m.querySelector(".body");
+    const name=body.querySelector("#nu-name").value.trim(),user=body.querySelector("#nu-user").value.trim().toLowerCase(),role=body.querySelector("#nu-role").value,pw=body.querySelector("#nu-pw").value;
+    if(!name)throw new Error("Enter the person's full name.");
+    if(!/^[a-z0-9._-]{3,32}$/.test(user))throw new Error("Username: 3–32 characters, letters, numbers, dot, dash or underscore.");
+    if(pw.length<10)throw new Error("Password must be at least 10 characters. Use Generate password.");
+    if(!hasToken())throw new Error("Connect saving in Settings first.");
+    const k=await userKey(user);if(S.config.users[k])throw new Error("That username already exists.");
+    const entry=await wrapDek(pw);
+    await commitConfig(c=>{c.users[k]=entry;},"Project tracker: add login");
+    await commitIndex(ix=>{ix.profiles=ix.profiles||{};ix.profiles[k]={username:user,name,role};},"Project tracker: add login profile");
+    body.innerHTML=draw();bind();
+    body.querySelector("#nu-done").innerHTML='<div class="okbox">Login created for <b>'+esc(name)+'</b> ('+esc(ROLES[role])+').<br>Username: <code>'+esc(user)+'</code><br>Password: <code>'+esc(pw)+'</code><br>Give these to them directly. The password is not shown again. It can take a minute or two before the new login works.</div>';
+  });
+}
+
+/* ---------- routing ---------- */
+function route(){
+  const h=(location.hash||"").replace(/^#/,"");
+  closeOverlay(true);
+  if(h.indexOf("job-")===0){S.view="job";const id=h.slice(4);if(id!==S.jobId){S.jobId=id;S.jobTab="locs";S.lf={q:"",status:"",crew:"",open:""};S.lsort={k:"n",dir:1};}}
+  else if(h==="completed")S.view="completed";else if(h==="open-items")S.view="open-items";else S.view="active";
+  document.querySelectorAll("[data-nav]").forEach(a=>{if(a.dataset.nav===(S.view==="job"?"":S.view))a.setAttribute("aria-current","page");else a.removeAttribute("aria-current");});
+  S._built=null;refresh();window.scrollTo(0,0);
+}
+window.addEventListener("hashchange",route);
+
+/* ---------- render dispatch ---------- */
+function refresh(){
+  const all=[...S.jobs.entries()];
+  document.getElementById("ct-active").textContent=S.loaded?all.filter(([,j])=>!j.archived).length:"";
+  document.getElementById("ct-done").textContent=S.loaded?all.filter(([,j])=>j.archived).length:"";
+  document.getElementById("ct-open").textContent=S.loaded?openItems().length:"";
+  if(!S.loaded)return;
+  if(S.view==="job")renderJob();else if(S.view==="open-items")renderOpen();else renderList(S.view==="completed");
+  if(S.drawer)syncDrawer();
+}
+
+/* ---------- overview ---------- */
+function renderList(archived){
+  const key="list-"+archived;
+  if(S._built!==key){
+    S._built=key;
+    main.innerHTML=
+     (archived?'':'<h2 class="sec">Summary</h2><section class="tiles" id="tiles"></section>')+
+     '<h2 class="sec">'+(archived?"Completed jobs":"Active jobs")+'</h2><div class="filters" role="search">'+
+      '<input type="search" id="f-q" placeholder="Search circuit, PO, WO, COH, description…" aria-label="Search jobs" value="'+esc(S.f.q)+'">'+
+      '<select id="f-wt" aria-label="Work type"></select>'+
+      '<select id="f-stage" aria-label="Stage"></select>'+
+      '<select id="f-crew" aria-label="Crew"></select>'+
+      '<select id="f-open" aria-label="Open items"><option value="">Any open items</option>'+FLAG_KEYS.map(f=>'<option value="'+f[0]+'">Open '+esc(f[1])+'</option>').join("")+'<option value="md">Miss Dig expiring ≤7 days</option><option value="any">Any open item</option></select>'+
+      '<span class="count" id="f-count"></span></div>'+
+     '<div class="tablebox"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table></div>';
+    ["q","wt","stage","crew","open"].forEach(k=>{const el=document.getElementById("f-"+k);el.addEventListener(k==="q"?"input":"change",()=>{S.f[k]=el.value;fillList(archived);});});
+  }
+  fillList(archived);
+}
+const LIST_COLS=[["name","Job"],["workType","Type"],["stage","Stage"],["po","PO"],["wo","WO"],["coh","COH"],["estStart","Est. start"],["estFinish","Est. finish"],["actStart","Start"],["actFinish","Finish"],["pct","Progress"],["rem","Remaining"],["open","Open items"],["hours","Est / Act hrs"],["leads","OH / UG lead"]];
+function fillList(archived){
+  const rows=[...S.jobs.entries()].filter(([,j])=>!!j.archived===archived).map(([id,j])=>({id,j,st:stats(j)}));
+  const opt=(el,vals,label,cur)=>{el.innerHTML='<option value="">'+label+'</option>'+vals.map(v=>'<option'+(v===cur?' selected':'')+'>'+esc(v)+'</option>').join("");};
+  opt(document.getElementById("f-wt"),[...new Set(rows.map(r=>r.j.workType).filter(Boolean))].sort(),"All work types",S.f.wt);
+  opt(document.getElementById("f-stage"),STAGES.filter(Boolean),"All stages",S.f.stage);
+  opt(document.getElementById("f-crew"),[...new Set(rows.flatMap(r=>[...r.st.crews]))].sort(),"All crews",S.f.crew);
+  document.getElementById("f-open").value=S.f.open;
+  if(!archived){
+    let rem=0,ug=0,kv=0,md=0,other=0,late=0;rows.forEach(r=>{rem+=r.st.rem;ug+=r.st.open.ug;kv+=r.st.open.kv40;md+=r.st.md;other+=r.st.open.tree+r.st.open.traffic+r.st.open.hydro;if(r.j.estFinish&&!r.j.actFinish&&daysTo(r.j.estFinish)<0)late++;});
+    document.getElementById("tiles").innerHTML=
+      tile("Active jobs",rows.length,late?late+" past est. finish":"none past est. finish",late>0)+
+      tile("Locations remaining",rem,"not yet completed")+
+      tile("Open UG / 40kV",ug+" / "+kv,"Required or Scheduled",false)+
+      tile("Open TT / TC / HV",other,"Tree trim, traffic, hydrovac")+
+      tile("Miss Dig expiring",md,"≤7 days or expired, location open",md>0);
+  }
+  const q=S.f.q.trim().toLowerCase();
+  let list=rows.filter(r=>{const j=r.j;
+    if(q&&![j.circuit,j.description,j.po,j.wo,j.coh,j.workType,j.ohFacilitator,j.ugLeader,j.notes].join(" ").toLowerCase().includes(q))return false;
+    if(S.f.wt&&j.workType!==S.f.wt)return false;if(S.f.stage&&j.stage!==S.f.stage)return false;
+    if(S.f.crew&&!r.st.crews.has(S.f.crew))return false;
+    if(S.f.open){if(S.f.open==="md"){if(!r.st.md)return false;}else if(S.f.open==="any"){if(!r.st.openTotal&&!r.st.md)return false;}else if(!r.st.open[S.f.open])return false;}
+    return true;});
+  const sv=r=>{const k=S.sort.k,j=r.j;if(k==="name")return jobName(j).toLowerCase();if(k==="pct")return r.st.pct==null?-1:r.st.pct;if(k==="rem")return r.st.rem;if(k==="open")return r.st.openTotal;if(k==="hours")return r.st.est;if(k==="leads")return (j.ohFacilitator||"").toLowerCase();return (j[k]||"").toString().toLowerCase();};
+  list.sort((a,b)=>{const x=sv(a),y=sv(b);return (x<y?-1:x>y?1:0)*S.sort.dir;});
+  document.getElementById("f-count").textContent=list.length+" of "+rows.length+" jobs";
+  document.getElementById("thead").innerHTML="<tr>"+LIST_COLS.map(c=>'<th data-k="'+c[0]+'" scope="col">'+esc(c[1])+(S.sort.k===c[0]?'<span class="arr">'+(S.sort.dir>0?"▲":"▼")+'</span>':"")+"</th>").join("")+"</tr>";
+  document.querySelectorAll("#thead th").forEach(th=>th.onclick=()=>{const k=th.dataset.k;S.sort.dir=S.sort.k===k?-S.sort.dir:1;S.sort.k=k;fillList(archived);});
+  const tb=document.getElementById("tbody");
+  if(!rows.length){tb.innerHTML='<tr><td colspan="'+LIST_COLS.length+'"><div class="empty"><b>'+(archived?"No completed jobs yet":"No active jobs yet")+'</b>'+(archived?"Archive a finished job from its page and it moves here.":'<span class="w-only">Add the first one with <b style="display:inline;font-size:inherit">+ New job</b>.</span>')+'</div></td></tr>';return;}
+  if(!list.length){tb.innerHTML='<tr><td colspan="'+LIST_COLS.length+'"><div class="empty"><b>No jobs match these filters</b>Clear the search or filters to see all jobs.</div></td></tr>';return;}
+  tb.innerHTML=list.map(r=>{const j=r.j,st=r.st;const late=j.estFinish&&!j.actFinish&&daysTo(j.estFinish)<0;
+    const chips=FLAG_KEYS.filter(f=>st.open[f[0]]).map(f=>'<span class="chip c-req" title="Open '+esc(f[1])+'">'+f[2]+" "+st.open[f[0]]+"</span>").join("")+(st.md?'<span class="chip c-bad" title="Miss Dig expiring">MD '+st.md+"</span>":"");
+    return '<tr tabindex="0" data-id="'+esc(r.id)+'"><td><div class="job-name">'+esc(jobName(j))+'</div><div class="sub">'+esc(j.circuit?j.description:"")+'</div></td>'+
+      "<td>"+esc(j.workType)+"</td><td>"+(j.stage?'<span class="chip c-stage">'+esc(j.stage)+"</span>":"")+"</td>"+
+      '<td class="mono" style="white-space:normal;min-width:110px;max-width:200px">'+esc(j.po)+'</td><td class="mono">'+esc(j.wo)+'</td><td class="mono">'+esc(j.coh)+"</td>"+
+      "<td>"+fmtD(j.estStart)+"</td><td"+(late?' class="late" title="Past estimated finish"':"")+">"+fmtD(j.estFinish)+"</td><td>"+fmtD(j.actStart)+"</td><td>"+fmtD(j.actFinish)+"</td>"+
+      "<td>"+(st.total?'<div class="bar"><div class="track"><div class="fill" style="width:'+(st.pct*100).toFixed(1)+'%"></div></div><span class="pct">'+(st.pct*100).toFixed(1)+'%</span></div><div class="sub">'+st.done+" of "+st.total+" locations</div>":'<span class="sub">No locations</span>')+"</td>"+
+      '<td class="mono">'+(st.total?st.rem:"")+"</td><td>"+(chips?'<div class="chips">'+chips+"</div>":'<span class="sub">None</span>')+"</td>"+
+      '<td class="mono">'+(st.total?fmtN(st.est,1)+" / "+fmtN(st.act,1):"")+"</td>"+
+      '<td><div>'+esc(j.ohFacilitator)+'</div><div class="sub">'+esc(j.ugLeader)+"</div></td></tr>";}).join("");
+  bindRows(tb,id=>location.hash="job-"+id);
+}
+function tile(k,v,s,alert){return'<div class="tile'+(alert?" alert":"")+'"><span class="k">'+esc(k)+'</span><span class="v">'+esc(v)+'</span><span class="s">'+esc(s)+"</span></div>";}
+function bindRows(tb,fn){tb.querySelectorAll("tr[data-id]").forEach(tr=>{tr.onclick=()=>fn(tr.dataset.id);tr.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();fn(tr.dataset.id);}};});}
+
+/* ---------- open items view ---------- */
+function openItems(){
+  const out=[];S.jobs.forEach((j,jid)=>{if(j.archived)return;locsOf(j).forEach(L=>{if(L.removed)return;
+    FLAG_KEYS.forEach(f=>{if(flagOpen(L[f[0]]))out.push({jid,j,L,kind:f[0],label:f[1],s:L[f[0]].s,d:L[f[0]].d});});
+    if(mdAlert(L))out.push({jid,j,L,kind:"md",label:"Miss Dig expiring",s:daysTo(L.mdGood)<0?"Expired":"Expiring",d:L.mdGood});});});
+  return out;}
+function renderOpen(){
+  if(S._built!=="open"){
+    S._built="open";
+    main.innerHTML='<div class="filters" role="search"><input type="search" id="o-q" placeholder="Search job, address, crew…" aria-label="Search open items" value="'+esc(S.oi.q)+'">'+
+      '<select id="o-flag" aria-label="Item"><option value="">All items</option>'+FLAG_KEYS.map(f=>'<option value="'+f[0]+'">'+esc(f[1])+"</option>").join("")+'<option value="md">Miss Dig expiring</option></select>'+
+      '<select id="o-state" aria-label="Status"><option value="">Required + Scheduled</option><option>Required</option><option>Scheduled</option></select><span class="count" id="o-count"></span></div>'+
+      '<div class="tablebox"><table><thead><tr><th class="nosort">Job</th><th class="nosort">Loc #</th><th class="nosort">Address</th><th class="nosort">Item</th><th class="nosort">Status</th><th class="nosort">Date</th><th class="nosort">Location status</th><th class="nosort">Crew</th><th class="nosort">Notes</th></tr></thead><tbody id="o-body"></tbody></table></div>';
+    document.getElementById("o-q").oninput=e=>{S.oi.q=e.target.value;fillOpen();};
+    document.getElementById("o-flag").onchange=e=>{S.oi.flag=e.target.value;fillOpen();};
+    document.getElementById("o-state").onchange=e=>{S.oi.state=e.target.value;fillOpen();};
+    document.getElementById("o-flag").value=S.oi.flag;document.getElementById("o-state").value=S.oi.state;
+  }
+  fillOpen();
+}
+function fillOpen(){
+  const q=S.oi.q.trim().toLowerCase();const all=openItems();
+  const list=all.filter(o=>{if(S.oi.flag&&o.kind!==S.oi.flag)return false;if(S.oi.state&&o.kind!=="md"&&o.s!==S.oi.state)return false;if(S.oi.state&&o.kind==="md")return false;
+    if(q&&![jobName(o.j),o.j.description,o.L.address,o.L.crew,o.L.locNo,o.L.notes].join(" ").toLowerCase().includes(q))return false;return true;});
+  list.sort((a,b)=>(a.d||"9999").localeCompare(b.d||"9999")||jobName(a.j).localeCompare(jobName(b.j))||(a.L.n-b.L.n));
+  document.getElementById("o-count").textContent=list.length+" of "+all.length+" items";
+  const tb=document.getElementById("o-body");
+  if(!list.length){tb.innerHTML='<tr><td colspan="9"><div class="empty"><b>'+(all.length?"No items match these filters":"No open items")+'</b>'+(all.length?"Clear the filters to see everything.":"Tree trim, UG, 40kV, traffic and hydrovac items marked Required or Scheduled show up here.")+"</div></td></tr>";return;}
+  tb.innerHTML=list.map(o=>{const ls=locState(o.L);
+    const chip=o.kind==="md"?'<span class="chip c-bad">'+esc(o.s)+"</span>":(o.s==="Required"?'<span class="chip c-req">Required</span>':'<span class="chip c-sch">Scheduled</span>');
+    return '<tr tabindex="0" data-id="'+esc(o.jid+"|"+o.L.id)+'"><td><div class="job-name">'+esc(jobName(o.j))+'</div></td><td class="mono">'+esc(o.L.locNo)+'</td><td class="wrapc">'+esc(o.L.address)+"</td><td>"+esc(o.label)+"</td><td>"+chip+"</td><td>"+fmtD(o.d)+"</td><td>"+({done:"Completed "+fmtD(o.L.done),sched:"Scheduled "+fmtD(o.L.sched),open:"Open"}[ls]||"")+"</td><td>"+esc(o.L.crew)+'</td><td class="wrapc sub">'+esc(o.L.notes)+"</td></tr>";}).join("");
+  bindRows(tb,v=>{const [jid,lid]=v.split("|");S.pendingLoc=lid;location.hash="job-"+jid;});
+}
+
+/* ---------- job view ---------- */
+function renderJob(){
+  const j=S.jobs.get(S.jobId);
+  if(!j){S._built=null;main.innerHTML='<a class="back" href="#active">← All jobs</a><div class="empty"><b>Job not found</b>It may have been deleted. Go back to the job list.</div>';return;}
+  if(S._built!=="job-"+S.jobId){
+    S._built="job-"+S.jobId;
+    main.innerHTML='<a class="back" href="'+(j.archived?"#completed":"#active")+'">← '+(j.archived?"Completed jobs":"All active jobs")+'</a>'+
+      '<section class="jobhead" id="jh"></section><section class="details" id="jd"></section><section class="tiles" id="jt"></section>'+
+      '<div class="subtabs" role="tablist"><button role="tab" id="t-locs" type="button">Locations</button><button role="tab" id="t-hist" type="button">Change history</button></div>'+
+      '<div id="jbody"></div>';
+    document.getElementById("t-locs").onclick=()=>{S.jobTab="locs";S._jb=null;fillJob();};
+    document.getElementById("t-hist").onclick=()=>{S.jobTab="hist";S._jb=null;fillJob();};
+    S._jb=null;
+  }
+  fillJob();
+  if(S.pendingLoc){const id=S.pendingLoc;S.pendingLoc=null;if(j.locations&&j.locations[id])openDrawer(id);}
+}
+function fillJob(){
+  const j=S.jobs.get(S.jobId);if(!j)return;const st=stats(j);
+  document.getElementById("jh").innerHTML='<div><h1>'+esc(jobName(j))+'</h1><div class="meta">'+(j.workType?'<span class="chip c-stage">'+esc(j.workType)+"</span>":"")+(j.stage?'<span class="chip c-sch">'+esc(j.stage)+"</span>":"")+(j.archived?'<span class="chip c-done">Archived</span>':"")+"<span>"+esc(j.circuit?j.description:"")+"</span></div></div>"+
+    '<div class="acts"><button class="btn w-only" id="a-edit" type="button">Edit job details</button><button class="btn w-only" id="a-add" type="button">+ Add locations</button><button class="btn" id="a-exp" type="button">Export job</button>'+
+    (j.archived?'<button class="btn w-only" id="a-arch" type="button">Restore to active</button>':'<button class="btn w-only" id="a-arch" type="button">Archive as completed</button>')+'<button class="btn danger w-only a-only" id="a-del" type="button">Delete job</button></div>';
+  document.getElementById("a-edit").onclick=()=>openJobModal(S.jobId);
+  document.getElementById("a-add").onclick=()=>openAddLocs(S.jobId);
+  document.getElementById("a-exp").onclick=()=>exportXlsx([S.jobId]);
+  document.getElementById("a-arch").onclick=()=>toggleArchive(S.jobId);
+  document.getElementById("a-del").onclick=()=>confirmBox("Delete "+jobName(j)+"?","This removes the job and all "+st.total+" of its locations for everyone. Archive it instead if the work is finished.","Delete job",()=>deleteJob(S.jobId));
+  const dv=(k,l,type,wide)=>{let v=j[k]||"";if(type==="date")v=fmtD(v);return'<div class="dl'+(wide?" wide":"")+'"><span class="k">'+esc(l)+'</span><span class="v'+(["po","wo","coh","hydroPO"].includes(k)?" mono":"")+'">'+(v?esc(v):'<span class="sub">—</span>')+"</span></div>";};
+  let dh="";JOB_GROUPS.forEach(g=>g[1].forEach(f=>{if(f[0]==="circuit"||f[0]==="workType"||f[0]==="stage"||f[0]==="description")return;if(f[0]==="notes"&&!j.notes)return;dh+=dv(f[0],f[1],f[2],f[4]);}));
+  if(j.importNote)dh+='<div class="dl wide"><span class="note">Imported from Weekly Tracker 9 — '+esc(j.importNote)+"</span></div>";
+  document.getElementById("jd").innerHTML=dh;
+  const late=j.estFinish&&!j.actFinish&&daysTo(j.estFinish)<0;
+  document.getElementById("jt").innerHTML=
+    tile("Complete",st.pct==null?"—":(st.pct*100).toFixed(1)+"%",st.done+" of "+st.total+" locations"+(late?" · past est. finish":""),late)+
+    tile("Remaining",st.rem,st.sched+" scheduled, not complete")+
+    tile("Est. / actual hours",fmtN(st.est,1)+" / "+fmtN(st.act,1),"Var (Act − Est): "+fmtN(st.act-st.est,1))+
+    tile("Open UG / 40kV",st.open.ug+" / "+st.open.kv40,"Required or Scheduled")+
+    tile("Open TT / TC / HV",st.open.tree+" / "+st.open.traffic+" / "+st.open.hydro,"Tree trim / traffic / hydrovac")+
+    tile("Miss Dig expiring",st.md,"≤7 days or expired, location open",st.md>0);
+  document.getElementById("t-locs").setAttribute("aria-selected",S.jobTab==="locs");document.getElementById("t-hist").setAttribute("aria-selected",S.jobTab==="hist");
+  if(S.jobTab==="locs")fillLocs(j);else fillHist();
+}
+const LOC_COLS=[["n","Loc #"],["mapPg","Map / Region"],["type","Type"],["truck","Access"],["poleSize","Pole size"],["address","Address"],["estHours","Est hrs"],["actHours","Act hrs"],["var","Var"],["sd","SD"],["mdGood","Miss Dig"],["tree","TT"],["ug","UG"],["kv40","40kV"],["traffic","TC"],["hydro","HV"],["sched","Scheduled"],["done","Completed"],["crew","Crew"],["notes","Notes"]];
+function fillLocs(j){
+  const box=document.getElementById("jbody");
+  if(S._jb!=="locs"){
+    S._jb="locs";
+    box.innerHTML='<div class="filters" role="search" style="margin-bottom:10px"><input type="search" id="l-q" placeholder="Search address, notes, Loc #…" aria-label="Search locations" value="'+esc(S.lf.q)+'">'+
+      '<select id="l-status" aria-label="Location status"><option value="">All locations</option><option value="notdone">Not completed</option><option value="open">Open (not scheduled)</option><option value="sched">Scheduled</option><option value="done">Completed</option><option value="removed">Removed</option></select>'+
+      '<select id="l-crew" aria-label="Crew"></select>'+
+      '<select id="l-open" aria-label="Open items"><option value="">Any open items</option>'+FLAG_KEYS.map(f=>'<option value="'+f[0]+'">Open '+esc(f[1])+'</option>').join("")+'<option value="md">Miss Dig expiring</option><option value="sd">SD required</option></select><span class="count" id="l-count"></span></div>'+
+      '<div class="tablebox"><table><thead id="l-head"></thead><tbody id="l-body"></tbody></table></div>';
+    [["q","input"],["status","change"],["crew","change"],["open","change"]].forEach(([k,ev])=>{const el=document.getElementById("l-"+k);el.addEventListener(ev,()=>{S.lf[k]=el.value;fillLocs(S.jobs.get(S.jobId));});});
+    document.getElementById("l-status").value=S.lf.status;document.getElementById("l-open").value=S.lf.open;
+  }
+  const all=locsOf(j);
+  const crews=[...new Set(all.map(L=>L.crew).filter(Boolean))].sort();
+  const cs=document.getElementById("l-crew");cs.innerHTML='<option value="">All crews</option>'+crews.map(c=>'<option'+(c===S.lf.crew?" selected":"")+">"+esc(c)+"</option>").join("");
+  const q=S.lf.q.trim().toLowerCase();
+  let list=all.filter(L=>{const s=locState(L);
+    if(S.lf.status==="removed"){if(s!=="removed")return false;}else if(S.lf.status==="notdone"){if(s==="done"||s==="removed")return false;}else if(S.lf.status){if(s!==S.lf.status)return false;}
+    if(S.lf.crew&&L.crew!==S.lf.crew)return false;
+    if(S.lf.open){if(S.lf.open==="md"){if(!mdAlert(L))return false;}else if(S.lf.open==="sd"){if(!L.sd)return false;}else if(!flagOpen(L[S.lf.open]))return false;}
+    if(q&&![L.locNo,L.address,L.notes,L.region,L.wo,L.mdTicket,L.poleSize,L.crew].join(" ").toLowerCase().includes(q))return false;return true;});
+  const sv=L=>{const k=S.lsort.k;if(k==="n")return L.n||0;if(k==="estHours"||k==="actHours")return Number(L[k])||0;if(k==="var")return (Number(L.actHours)||0)-(Number(L.estHours)||0);if(FLAG_KEYS.some(f=>f[0]===k))return FLAG_STATES.indexOf(L[k]&&L[k].s);if(k==="sd")return L.sd?1:0;return (L[k]||"").toString().toLowerCase();};
+  list.sort((a,b)=>{const x=sv(a),y=sv(b);return (x<y?-1:x>y?1:0)*S.lsort.dir;});
+  document.getElementById("l-count").textContent=list.length+" of "+all.length+" locations";
+  document.getElementById("l-head").innerHTML="<tr>"+LOC_COLS.map(c=>'<th data-k="'+c[0]+'" scope="col">'+esc(c[1])+(S.lsort.k===c[0]?'<span class="arr">'+(S.lsort.dir>0?"▲":"▼")+"</span>":"")+"</th>").join("")+"</tr>";
+  document.querySelectorAll("#l-head th").forEach(th=>th.onclick=()=>{const k=th.dataset.k;S.lsort.dir=S.lsort.k===k?-S.lsort.dir:1;S.lsort.k=k;fillLocs(S.jobs.get(S.jobId));});
+  const tb=document.getElementById("l-body");
+  if(!all.length){tb.innerHTML='<tr><td colspan="'+LOC_COLS.length+'"><div class="empty"><b>No locations on this job</b><span class="w-only">Use + Add locations to enter them or paste them from Excel.</span></div></td></tr>';return;}
+  if(!list.length){tb.innerHTML='<tr><td colspan="'+LOC_COLS.length+'"><div class="empty"><b>No locations match these filters</b>Clear the search or filters to see all locations.</div></td></tr>';return;}
+  tb.innerHTML=list.map(L=>{const s=locState(L);const hasE=L.estHours!=null&&L.estHours!=="",hasA=L.actHours!=null&&L.actHours!=="";const v=hasE&&hasA?Number(L.actHours)-Number(L.estHours):null;
+    let md="";if(L.missDig){const d=daysTo(L.mdGood);md=L.mdGood?(mdAlert(L)?'<span class="chip c-bad" title="Good through '+esc(fmtD(L.mdGood))+'">'+(d<0?"Exp ":"")+esc(fmtD(L.mdGood))+"</span>":'<span class="sub">'+esc(fmtD(L.mdGood))+"</span>"):'<span class="chip c-req">REQ</span>';}
+    return '<tr tabindex="0" class="'+s+'" data-id="'+esc(L.id)+'"><td class="locno mono">'+esc(L.locNo)+'</td><td>'+esc([L.mapPg,L.region].filter(Boolean).join(" · "))+"</td><td>"+esc(L.type)+"</td><td>"+esc(L.truck)+"</td><td>"+esc(L.poleSize)+'</td><td class="wrapc">'+esc(L.address)+(L.wo?'<div class="sub mono">WO '+esc(L.wo)+"</div>":"")+'</td><td class="mono">'+fmtN(L.estHours)+'</td><td class="mono">'+fmtN(L.actHours)+'</td><td class="mono'+(v>0?" late":"")+'">'+(v==null?"":fmtN(v))+"</td><td>"+(L.sd?'<span class="chip c-req">SD</span>':"")+"</td><td>"+md+"</td>"+
+      FLAG_KEYS.map(f=>"<td>"+flagChip(L[f[0]],f[1])+"</td>").join("")+"<td>"+fmtD(L.sched)+"</td><td>"+fmtD(L.done)+"</td><td>"+esc(L.crew)+'</td><td class="wrapc sub">'+esc(L.notes)+"</td></tr>";}).join("");
+  bindRows(tb,openDrawer);
+  S._visibleLocs=list.map(L=>L.id);
+}
+function fillHist(){
+  const box=document.getElementById("jbody");S._jb="hist";const j=S.jobs.get(S.jobId);if(!j)return;
+  const ents=(j.history||[]).slice().reverse();
+  box.innerHTML='<div class="hist">'+(ents.length?ents.map(e=>{const d=new Date(e.t);return'<div class="row"><span class="t">'+esc(d.toLocaleString(undefined,{month:"2-digit",day:"2-digit",year:"2-digit",hour:"numeric",minute:"2-digit"}))+"</span><b>"+esc(e.by||"")+"</b><span>"+esc(e.text)+"</span></div>";}).join(""):'<div class="row"><span class="sub">No changes recorded yet. Every edit made in this tracker is logged here with who made it and when.</span></div>')+"</div>";
+}
+async function toggleArchive(jid){const j=S.jobs.get(jid);if(!j)return;const to=!j.archived;
+  const patch={archived:to};if(to&&!j.stage)patch.stage="Complete";
+  if(await jobUpdate(jid,patch,to?"Archived as completed":"Restored to active"))toast(to?"Moved to Completed":"Restored to Active jobs");}
+
+/* ---------- overlays ---------- */
+function closeOverlay(silent){if(S.pend)flushPending();overlay.innerHTML="";S.drawer=null;document.removeEventListener("keydown",escKey);}
+function escKey(e){if(e.key==="Escape"){const top=overlay.querySelector(".modal.small");if(top){top.previousElementSibling&&top.previousElementSibling.remove();top.remove();return;}closeOverlay();}}
+function confirmBox(title,body,label,onOk){
+  const scr=document.createElement("div");scr.className="scrim top";const m=document.createElement("div");m.className="modal small";m.setAttribute("role","alertdialog");m.setAttribute("aria-modal","true");
+  m.innerHTML='<header><h2>'+esc(title)+'</h2></header><div class="body"><p style="margin:0">'+esc(body)+'</p></div><footer><span class="sp"></span><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" data-ok>'+esc(label)+"</button></footer>";
+  overlay.appendChild(scr);overlay.appendChild(m);document.addEventListener("keydown",escKey);
+  const close=()=>{scr.remove();m.remove();};scr.onclick=close;m.querySelector("[data-x]").onclick=close;m.querySelector("[data-ok]").onclick=()=>{close();onOk();};m.querySelector("[data-ok]").focus();
+}
+
+/* ---------- location drawer ---------- */
+function fieldHtml(prefix,f,val,disabled){
+  const [k,l,type,list,wide]=f;const id=prefix+k;const dis=disabled?" disabled":"";
+  if(type==="check")return'<label class="f chk" for="'+id+'"><input type="checkbox" id="'+id+'" data-k="'+k+'"'+(val?" checked":"")+dis+">"+esc(l)+"</label>";
+  if(type==="textarea")return'<label class="f'+(wide?" wide":"")+'" for="'+id+'">'+esc(l)+'<textarea id="'+id+'" data-k="'+k+'"'+dis+">"+esc(val)+"</textarea></label>";
+  if(type==="stage")return'<label class="f" for="'+id+'">'+esc(l)+'<select id="'+id+'" data-k="'+k+'"'+dis+">"+STAGES.map(s=>'<option value="'+esc(s)+'"'+(s===(val||"")?" selected":"")+">"+esc(s||"—")+"</option>").join("")+"</select></label>";
+  if(type==="truck")return'<label class="f" for="'+id+'">'+esc(l)+'<select id="'+id+'" data-k="'+k+'"'+dis+">"+["","TA","NTA"].map(s=>'<option value="'+s+'"'+(s===(val||"")?" selected":"")+">"+(s||"—")+"</option>").join("")+(val&&!["TA","NTA"].includes(val)?'<option selected>'+esc(val)+"</option>":"")+"</select></label>";
+  const t=type==="date"?"date":type==="number"?"number":"text";
+  return'<label class="f'+(wide?" wide":"")+'" for="'+id+'">'+esc(l)+'<input type="'+t+'" id="'+id+'" data-k="'+k+'"'+(t==="number"?' step="any" inputmode="decimal"':"")+(list?' list="'+list+'"':"")+' value="'+esc(val==null?"":val)+'"'+dis+"></label>";
+}
+function openDrawer(locId){
+  const j=S.jobs.get(S.jobId);if(!j||!j.locations||!j.locations[locId])return;
+  closeOverlay(true);S.drawer=locId;
+  const scr=document.createElement("div");scr.className="scrim";scr.onclick=()=>closeOverlay();
+  const d=document.createElement("aside");d.className="drawer";d.setAttribute("role","dialog");d.setAttribute("aria-modal","true");d.setAttribute("aria-labelledby","dr-title");
+  overlay.appendChild(scr);overlay.appendChild(d);document.addEventListener("keydown",escKey);
+  drawDrawer(d,locId);
+}
+function drawDrawer(d,locId){
+  const j=S.jobs.get(S.jobId);const L=Object.assign({id:locId},j.locations[locId]);const ro=S.canWrite===false;
+  let h='<header><h2 id="dr-title">Location '+esc(L.locNo)+'</h2><button class="btn sm" type="button" id="dr-prev" aria-label="Previous location">◀</button><button class="btn sm" type="button" id="dr-next" aria-label="Next location">▶</button><button class="btn sm" type="button" id="dr-x">Close</button></header><div class="body">';
+  h+='<div class="sub">'+esc(jobName(j))+(L.removed?' · <span class="chip c-bad">Removed</span>':"")+" · Changes save when you click Save &amp; close, move to another location, or close this panel.</div>";
+  LOC_GROUPS.forEach((g,gi)=>{
+    h+="<fieldset><legend>"+esc(g[0])+"</legend>"+g[1].map(f=>fieldHtml("lf-",f,L[f[0]],ro)).join("")+"</fieldset>";
+    if(gi===2){h+='<div><div class="sec-h">Requirements</div><div class="flags">'+
+      FLAG_KEYS.map(f=>{const fv=L[f[0]]||{s:"N/A",d:""};return'<div class="flagrow"><span class="nm">'+esc(f[1])+'</span><select id="lf-'+f[0]+'-s" data-flag="'+f[0]+'" aria-label="'+esc(f[1])+' status"'+(ro?" disabled":"")+">"+FLAG_STATES.map(s=>"<option"+(s===fv.s?" selected":"")+">"+s+"</option>").join("")+'</select><input type="date" id="lf-'+f[0]+'-d" data-flagd="'+f[0]+'" aria-label="'+esc(f[1])+' date" value="'+esc(fv.d||"")+'"'+(ro?" disabled":"")+"></div>";}).join("")+
+      '</div><div class="sub" style="margin-top:6px">Date = scheduled date when Scheduled, completion date when Complete.</div></div>';}
+  });
+  h+='</div><footer class="w-only">'+(L.removed?'<button class="btn" type="button" id="dr-rm">Restore location</button>':'<button class="btn danger" type="button" id="dr-rm">Remove location</button>')+'<span class="dstat" id="dr-status">All changes saved</span><span class="sp"></span><button class="btn primary" type="button" id="dr-done">Save &amp; close</button></footer>';
+  d.innerHTML=h;
+  d.querySelector("#dr-x").onclick=()=>closeOverlay();const dn=d.querySelector("#dr-done");if(dn)dn.onclick=()=>closeOverlay();
+  const nav=step=>{if(S.pend)flushPending();const ids=S._visibleLocs||locsOf(j).map(x=>x.id);const i=ids.indexOf(locId);const n=ids[i+step];if(n){S.drawer=n;drawDrawer(d,n);}};
+  d.querySelector("#dr-prev").onclick=()=>nav(-1);d.querySelector("#dr-next").onclick=()=>nav(1);
+  const rm=d.querySelector("#dr-rm");if(rm)rm.onclick=()=>{if(L.removed){saveLoc(locId,{removed:false,removedAt:""},"Loc "+L.locNo+": restored");}else confirmBox("Remove location "+L.locNo+"?","It stays on record as Removed and drops out of counts and progress. You can restore it later.","Remove",()=>saveLoc(locId,{removed:true,removedAt:todayStr()},"Loc "+L.locNo+": removed from job"));};
+  d.querySelectorAll("[data-k]").forEach(el=>el.addEventListener("change",()=>{
+    const k=el.dataset.k;const cur=(S.jobs.get(S.jobId).locations[locId]||{});let v;
+    if(el.type==="checkbox")v=el.checked;else if(el.type==="number"){v=el.value===""?null:Number(el.value);if(v!=null&&!isFinite(v)){toast(LOC_LABEL[k]+" must be a number.");return;}}else v=el.value.trim();
+    const old=cur[k];if(String(old==null?"":old)===String(v==null?"":v))return;
+    const disp=x=>x===true?"Yes":x===false?"No":(x==null||x==="")?"blank":String(x);
+    const patch={[k]:v};
+    if(k==="done"&&v&&!cur.done){/* nothing automatic: completion of requirements is set explicitly */}
+    stage(locId,patch,"Loc "+(k==="locNo"?old:cur.locNo)+": "+LOC_LABEL[k]+" "+disp(old)+" → "+disp(v));
+  }));
+  d.querySelectorAll("[data-flag]").forEach(el=>el.addEventListener("change",()=>{
+    const k=el.dataset.flag;const cur=(S.jobs.get(S.jobId).locations[locId]||{})[k]||{s:"N/A",d:""};const s=el.value;let dd="";
+    if(s==="Complete")dd=todayStr();
+    d.querySelector("#lf-"+k+"-d").value=dd;
+    stage(locId,{[k]:{s:s,d:dd}},"Loc "+(S.jobs.get(S.jobId).locations[locId]||{}).locNo+": "+LOC_LABEL[k]+" "+cur.s+" → "+s+(dd?" ("+fmtD(dd)+")":""));
+  }));
+  d.querySelectorAll("[data-flagd]").forEach(el=>el.addEventListener("change",()=>{
+    const k=el.dataset.flagd;const cur=(S.jobs.get(S.jobId).locations[locId]||{})[k]||{s:"N/A",d:""};const dd=el.value;
+    if((cur.d||"")===dd)return;
+    let s=cur.s;if(dd&&(s==="N/A"||s==="Required")){s="Scheduled";d.querySelector("#lf-"+k+"-s").value=s;}
+    stage(locId,{[k]:{s:s,d:dd}},"Loc "+(S.jobs.get(S.jobId).locations[locId]||{}).locNo+": "+LOC_LABEL[k]+" "+s+" date "+(fmtD(cur.d)||"blank")+" → "+(fmtD(dd)||"blank"));
+  }));
+}
+function syncDrawer(){
+  const d=overlay.querySelector(".drawer");if(!d)return;const j=S.jobs.get(S.jobId);if(!j||!j.locations||!j.locations[S.drawer]){closeOverlay();return;}
+  const L=j.locations[S.drawer];const act=document.activeElement;
+  d.querySelectorAll("[data-k]").forEach(el=>{if(el===act)return;const v=L[el.dataset.k];if(el.type==="checkbox")el.checked=!!v;else el.value=v==null?"":v;});
+  FLAG_KEYS.forEach(f=>{const s=d.querySelector("#lf-"+f[0]+"-s"),dd=d.querySelector("#lf-"+f[0]+"-d");const fv=L[f[0]]||{s:"N/A",d:""};if(s&&s!==act)s.value=fv.s;if(dd&&dd!==act)dd.value=fv.d||"";});
+  d.querySelector("#dr-title").textContent="Location "+L.locNo;markDirty();
+}
+async function saveLoc(locId,patch,hist){
+  if(S.pend)await flushPending();
+  const ok=await jobUpdate(S.jobId,{locations:{[locId]:patch}},hist);
+  if(ok){const d=overlay.querySelector(".drawer");if(d&&("removed" in patch))drawDrawer(d,locId);}
+}
+
+/* ---------- job modal (new + edit) ---------- */
+const GRID_COLS=[["locNo","Loc #","w-xs"],["address","Address","w-l"],["type","Type","w-s","dl-type"],["truck","Access","w-xs","truck"],["poleSize","Pole size","w-s"],["estHours","Est hrs","w-xs","num"],["tree","Tree Trim","","flag"],["ug","UG","","flag"],["kv40","40kV","","flag"],["traffic","Traffic","","flag"],["hydro","Hydrovac","","flag"],["sd","SD","","chk"],["missDig","Miss Dig","","chk"],["notes","Notes","w-l"]];
+function gridRow(L,i){
+  return "<tr>"+GRID_COLS.map(c=>{const [k,l,w,kind]=c;const v=L[k];const al=' aria-label="Row '+(i+1)+" "+esc(l)+'"';
+    if(kind==="flag")return'<td><select data-g="'+k+'"'+al+">"+FLAG_STATES.slice(0,3).map(s=>"<option"+(s===(v&&v.s)?" selected":"")+">"+s+"</option>").join("")+"</select></td>";
+    if(kind==="chk")return'<td style="text-align:center"><input type="checkbox" data-g="'+k+'"'+al+(v?" checked":"")+"></td>";
+    if(kind==="truck")return'<td><select data-g="'+k+'"'+al+">"+["","TA","NTA"].map(s=>'<option value="'+s+'"'+(s===(v||"")?" selected":"")+">"+(s||"—")+"</option>").join("")+"</select></td>";
+    return'<td><input class="'+w+'" data-g="'+k+'"'+al+(kind==="num"?' type="number" step="any" inputmode="decimal"':' type="text"')+(kind&&kind.startsWith("dl")?' list="'+kind+'"':"")+' value="'+esc(v==null?"":v)+'"></td>';}).join("")+'<td><button class="btn sm" type="button" data-del aria-label="Remove row '+(i+1)+'">✕</button></td></tr>';
+}
+function locGridHtml(){return'<div class="row-inline"><label class="f" for="g-count" style="width:170px">Number of locations<input type="number" id="g-count" min="0" max="500" step="1" inputmode="numeric"></label><button class="btn" type="button" id="g-set">Set rows</button><button class="btn" type="button" id="g-addrow">+ Add one row</button><button class="btn" type="button" id="g-paste-t">Paste from Excel</button><span class="sub" id="g-info"></span></div>'+
+  '<div class="pastebox" id="g-paste" hidden><p class="sub" style="margin:0 0 6px">Copy rows from Excel and paste below. If the first row has headers (Location #, Address, Type, Truck Access, Pole Size, Crew Hours, UG, 40kV, Traffic Control, Hydro Vac, Tree Trim, Notes…) they are matched by name. Without headers, columns are read in this order: Loc #, Address, Type, Access, Pole size, Est hrs, Tree Trim, UG, 40kV, Traffic, Hydrovac, SD, Miss Dig, Notes. Yes / True / X / Required mark a requirement as Required.</p><textarea id="g-paste-box" aria-label="Paste rows from Excel" placeholder="Paste here (Ctrl+V)"></textarea><div class="row-inline" style="margin-top:6px"><button class="btn primary" type="button" id="g-paste-go">Add pasted rows</button><span class="sub" id="g-paste-info"></span></div></div>'+
+  '<div class="grid-edit"><table><thead><tr>'+GRID_COLS.map(c=>'<th class="nosort">'+esc(c[1])+"</th>").join("")+'<th class="nosort"></th></tr></thead><tbody id="g-body"></tbody></table></div><p class="sub" style="margin:0">Scheduling, crew, hours actuals and Miss Dig ticket details are edited per location after saving.</p>';}
+function bindGrid(root,startN){
+  const body=root.querySelector("#g-body");const info=root.querySelector("#g-info");
+  const rows=()=>[...body.querySelectorAll("tr")];
+  const renum=()=>{info.textContent=rows().length+" row"+(rows().length===1?"":"s");root.querySelector("#g-count").value=rows().length;};
+  const add=(L)=>{const tr=document.createElement("tbody");tr.innerHTML=gridRow(L,rows().length);const r=tr.firstElementChild;body.appendChild(r);r.querySelector("[data-del]").onclick=()=>{r.remove();renum();};};
+  const nextNo=()=>{let m=startN-1;rows().forEach(r=>{const n=parseInt(r.querySelector('[data-g="locNo"]').value,10);if(n>m)m=n;});return m+1;};
+  const isEmpty=r=>[...r.querySelectorAll("[data-g]")].every(el=>el.dataset.g==="locNo"||(el.type==="checkbox"?!el.checked:el.tagName==="SELECT"?(el.value===""||el.value==="N/A"):el.value.trim()===""));
+  root.querySelector("#g-set").onclick=()=>{const n=parseInt(root.querySelector("#g-count").value,10);if(!(n>=0)||n>500){toast("Enter a number of locations from 0 to 500.");return;}
+    let rs=rows();if(n>rs.length){for(let i=rs.length;i<n;i++)add(emptyLoc(nextNo()));}else{for(let i=rs.length-1;i>=n;i--){if(!isEmpty(rs[i])){toast("Row "+(i+1)+" has data, so it was kept. Remove it with ✕ if you meant to.");break;}rs[i].remove();}}renum();};
+  root.querySelector("#g-addrow").onclick=()=>{add(emptyLoc(nextNo()));renum();};
+  root.querySelector("#g-paste-t").onclick=()=>{const p=root.querySelector("#g-paste");p.hidden=!p.hidden;if(!p.hidden)root.querySelector("#g-paste-box").focus();};
+  root.querySelector("#g-paste-go").onclick=()=>{const txt=root.querySelector("#g-paste-box").value;const res=parsePaste(txt,nextNo());
+    if(!res.rows.length){root.querySelector("#g-paste-info").textContent="No rows found. Copy cells from Excel and paste them into the box.";return;}
+    rows().forEach(r=>{if(isEmpty(r))r.remove();});
+    res.rows.forEach(L=>add(L));renum();root.querySelector("#g-paste-box").value="";root.querySelector("#g-paste").hidden=true;
+    toast("Added "+res.rows.length+" rows"+(res.headers?" (matched columns: "+res.mapped.join(", ")+")":"")+(res.ignored.length?". Not used: "+res.ignored.join(", "):""));};
+  renum();
+  return{rows,read:()=>rows().map(r=>{const L={};r.querySelectorAll("[data-g]").forEach(el=>{const k=el.dataset.g;const col=GRID_COLS.find(c=>c[0]===k);
+      if(col[3]==="flag")L[k]={s:el.value,d:""};else if(col[3]==="chk")L[k]=el.checked;else if(col[3]==="num")L[k]=el.value===""?null:Number(el.value);else L[k]=el.value.trim();});return L;}),add,renum,isEmpty};
+}
+/* paste parsing */
+const PASTE_ALIAS={"location #":"locNo","location":"locNo","loc #":"locNo","loc":"locNo","loc#":"locNo","viper":"locNo","map page #":"mapPg","map page":"mapPg","map pg":"mapPg","viper wk":"mapPg","region":"region","circuit":"region","type":"type","truck access":"truck","access":"truck","ta/nta":"truck","pole size":"poleSize","wo":"wo","address/note":"address","address":"address","address/note/event id":"address","crew hours":"estHours","estimated hours":"estHours","est hours":"estHours","est hrs":"estHours","completed hours":"actHours","actual hours":"actHours","ug":"ug","underground":"ug","ug assist required":"ug","40kv":"kv40","40kv required s/d":"kv40","sd required":"sd","sd":"sd","missdig":"missDig","miss dig":"missDig","good through":"mdGood","ticket expires":"mdGood","miss dig exp":"mdGood","missdig ticket":"mdTicket","miss dig ticket":"mdTicket","traffic control":"traffic","traffic":"traffic","hydro vac":"hydro","hydrovac":"hydro","hydro":"hydro","tree trim":"tree","needs tree trim":"tree","tree":"tree","scheduled start date":"sched","scheduled":"sched","completed date":"done","completed":"done","crew #":"crew","crew":"crew","photo":"photo","notes":"notes","note":"notes"};
+const DEFAULT_ORDER=["locNo","address","type","truck","poleSize","estHours","tree","ug","kv40","traffic","hydro","sd","missDig","notes"];
+function splitTSV(t){const rows=[];let row=[],cell="",q=false;for(let i=0;i<t.length;i++){const c=t[i];
+  if(q){if(c==='"'){if(t[i+1]==='"'){cell+='"';i++;}else q=false;}else cell+=c;}
+  else if(c==='"'&&cell==="")q=true;else if(c==="\t"){row.push(cell);cell="";}else if(c==="\n"||c==="\r"){if(c==="\r"&&t[i+1]==="\n")i++;row.push(cell);rows.push(row);row=[];cell="";}else cell+=c;}
+  if(cell!==""||row.length){row.push(cell);rows.push(row);}return rows.filter(r=>r.some(x=>x.trim()!==""));}
+function toDate(v){v=String(v||"").trim();if(!v)return"";let m=/^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(v);if(m)return m[1]+"-"+m[2].padStart(2,"0")+"-"+m[3].padStart(2,"0");
+  m=/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec(v);if(m){let y=m[3];if(y.length===2)y="20"+y;return y+"-"+m[1].padStart(2,"0")+"-"+m[2].padStart(2,"0");}return null;}
+function flagVal(v){const s=String(v||"").trim().toLowerCase();if(!s||["false","no","n","n/a","na","0","-"].includes(s))return{s:"N/A",d:""};if(s.startsWith("sch"))return{s:"Scheduled",d:""};if(s.startsWith("comp")||s==="done")return{s:"Complete",d:""};return{s:"Required",d:""};}
+const truthy=v=>["true","yes","y","x","1","required","req"].includes(String(v||"").trim().toLowerCase());
+function parsePaste(text,startN){
+  const grid=splitTSV(text||"");const out={rows:[],headers:false,mapped:[],ignored:[]};if(!grid.length)return out;
+  const h=grid[0].map(x=>x.trim().toLowerCase().replace(/\s+/g," "));const hits=h.filter(x=>PASTE_ALIAS[x]).length;
+  let map,data;
+  if(hits>=2){out.headers=true;const seen=new Set();map=h.map(x=>{const k=PASTE_ALIAS[x];if(!k||seen.has(k)){if(x)out.ignored.push(x);return null;}seen.add(k);out.mapped.push(x);return k;});data=grid.slice(1);}
+  else{map=DEFAULT_ORDER.slice();data=grid;}
+  let n=startN;
+  data.forEach(r=>{const L=emptyLoc(n);let any=false;const notes=[];
+    r.forEach((v,i)=>{const k=map[i];v=String(v||"").trim();if(!k||!v)return;any=true;
+      if(FLAG_KEYS.some(f=>f[0]===k))L[k]=flagVal(v);
+      else if(k==="sd"||k==="missDig")L[k]=truthy(v);
+      else if(k==="estHours"||k==="actHours"){const nn=Number(v.replace(/,/g,""));if(isFinite(nn))L[k]=nn;else notes.push((LOC_LABEL[k]||k)+": "+v);}
+      else if(["mdGood","sched","done"].includes(k)){const d=toDate(v);if(d)L[k]=d;else notes.push((LOC_LABEL[k]||k)+": "+v);}
+      else L[k]=v;});
+    if(!any)return;if(notes.length)L.notes=[L.notes].concat(notes).filter(Boolean).join(" | ");
+    if(!L.locNo)L.locNo=String(n);out.rows.push(L);n++;});
+  return out;
+}
+function openJobModal(jobId){
+  const isNew=!jobId;const j=isNew?Object.assign({},EMPTY_JOB):S.jobs.get(jobId);if(!j)return;
+  closeOverlay(true);
+  const scr=document.createElement("div");scr.className="scrim";const m=document.createElement("div");m.className="modal";m.setAttribute("role","dialog");m.setAttribute("aria-modal","true");m.setAttribute("aria-labelledby","jm-title");
+  let h='<header><h2 id="jm-title">'+(isNew?"New job":"Edit "+esc(jobName(j)))+'</h2><button class="btn sm" type="button" data-x>Close</button></header><form class="body" id="jm-form" novalidate>';
+  JOB_GROUPS.forEach(g=>{h+="<fieldset><legend>"+esc(g[0])+"</legend>"+g[1].map(f=>fieldHtml("jm-",f,j[f[0]],false)).join("")+"</fieldset>";});
+  if(isNew)h+='<div><div class="sec-h">Locations</div>'+locGridHtml()+"</div>";
+  h+='</form><footer><span class="sub" id="jm-msg"></span><span class="sp"></span><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="jm-save">'+(isNew?"Create job":"Save changes")+"</button></footer>";
+  m.innerHTML=h;overlay.appendChild(scr);overlay.appendChild(m);document.addEventListener("keydown",escKey);
+  m.querySelectorAll("[data-x]").forEach(b=>b.onclick=()=>closeOverlay());
+  m.querySelector("#jm-form").addEventListener("submit",e=>e.preventDefault());
+  const grid=isNew?bindGrid(m,1):null;
+  m.querySelector("#jm-circuit").focus();
+  m.querySelector("#jm-save").onclick=async()=>{
+    const vals={};m.querySelectorAll("#jm-form [data-k]").forEach(el=>{if(el.closest("#g-body"))return;vals[el.dataset.k]=el.value.trim();});
+    if(!vals.circuit&&!vals.description){m.querySelector("#jm-msg").textContent="Enter a Sub / Circuit or a Job description so the job has a name.";m.querySelector("#jm-circuit").focus();return;}
+    if(vals.actFinish&&vals.actStart&&vals.actFinish<vals.actStart){m.querySelector("#jm-msg").textContent="Actual finish is before actual start. Check the dates.";return;}
+    if(vals.estFinish&&vals.estStart&&vals.estFinish<vals.estStart){m.querySelector("#jm-msg").textContent="Est. finish is before est. start. Check the dates.";return;}
+    const btn=m.querySelector("#jm-save");btn.disabled=true;
+    if(isNew){
+      const locs={};grid.read().forEach((L,i)=>{const full=Object.assign(emptyLoc(i+1),L,{n:i+1});if(!full.locNo)full.locNo=String(i+1);locs["L"+String(i+1).padStart(3,"0")]=full;});
+      const now=new Date().toISOString();
+      const doc=Object.assign({},EMPTY_JOB,vals,{archived:false,createdAt:now,createdBy:S.me.name,locations:locs,history:[]});
+      const id=await createJob(doc,"Created job with "+Object.keys(locs).length+" locations");
+      if(id){closeOverlay();toast("Created "+jobName(doc));location.hash="job-"+id;}else btn.disabled=false;
+    }else{
+      const cur=S.jobs.get(jobId)||{};const patch={};const changes=[];
+      Object.keys(vals).forEach(k=>{if((cur[k]||"")!==vals[k]){patch[k]=vals[k];changes.push(JOB_LABEL[k]+" "+(cur[k]||"blank")+" → "+(vals[k]||"blank"));}});
+      if(!changes.length){closeOverlay();return;}
+      if(await jobUpdate(jobId,patch,"Edited job: "+changes.join("; "))){closeOverlay();toast("Saved");}else btn.disabled=false;
+    }
+  };
+}
+function openAddLocs(jobId){
+  const j=S.jobs.get(jobId);if(!j)return;closeOverlay(true);
+  const ls=locsOf(j);const maxN=ls.reduce((a,L)=>Math.max(a,L.n||0),0);const maxNo=ls.reduce((a,L)=>Math.max(a,parseInt(L.locNo,10)||0),0);
+  const scr=document.createElement("div");scr.className="scrim";const m=document.createElement("div");m.className="modal";m.setAttribute("role","dialog");m.setAttribute("aria-modal","true");m.setAttribute("aria-labelledby","al-title");
+  m.innerHTML='<header><h2 id="al-title">Add locations to '+esc(jobName(j))+'</h2><button class="btn sm" type="button" data-x>Close</button></header><div class="body">'+locGridHtml()+'</div><footer><span class="sub" id="al-msg"></span><span class="sp"></span><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="al-save">Add locations</button></footer>';
+  overlay.appendChild(scr);overlay.appendChild(m);document.addEventListener("keydown",escKey);
+  m.querySelectorAll("[data-x]").forEach(b=>b.onclick=()=>closeOverlay());
+  const grid=bindGrid(m,maxNo+1);grid.add(emptyLoc(maxNo+1));grid.renum();
+  m.querySelector("#al-save").onclick=async()=>{
+    const rs=grid.rows();const list=grid.read().filter((L,i)=>!grid.isEmpty(rs[i]));
+    if(!list.length){m.querySelector("#al-msg").textContent="Fill in at least one row (address, type or another field).";return;}
+    const patch={};let n=maxN;list.forEach(L=>{n++;const id=newId("L");patch[id]=Object.assign(emptyLoc(n),L,{n:n});});
+    m.querySelector("#al-save").disabled=true;
+    if(await jobUpdate(jobId,{locations:patch},"Added "+list.length+" location"+(list.length===1?"":"s")+" (Loc "+list.map(L=>L.locNo).join(", ")+")")){closeOverlay();toast("Added "+list.length+" locations");}
+    else m.querySelector("#al-save").disabled=false;
+  };
+}
+
+/* ---------- Excel export ---------- */
+function xd(s){if(!s)return"";const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s);return m?new Date(Date.UTC(+m[1],+m[2]-1,+m[3])):s;}
+function jobRow(j){const st=stats(j);return{"Sub / Circuit":j.circuit,"Work type":j.workType,"Stage":j.stage,"Job description":j.description,"PO":j.po,"WO":j.wo,"COH":j.coh,"COH status":j.cohStatus,"Service center":j.sc,
+  "Est. start":xd(j.estStart),"Est. finish":xd(j.estFinish),"Actual start":xd(j.actStart),"Actual finish":xd(j.actFinish),"COH target start":xd(j.targetStart),"COH target finish":xd(j.targetFinish),
+  "Locations":st.total,"Completed":st.done,"Remaining":st.rem,"% complete":st.pct==null?"":Math.round(st.pct*1000)/1000,
+  "Open Tree Trim":st.open.tree,"Open UG":st.open.ug,"Open 40kV":st.open.kv40,"Open Traffic":st.open.traffic,"Open Hydrovac":st.open.hydro,"Miss Dig expiring (≤7d)":st.md,
+  "Est. hours":Math.round(st.est*100)/100,"Actual hours":Math.round(st.act*100)/100,"Preflight sent":xd(j.preflightSent),"Preflight received":xd(j.preflightReceived),"Firm bid":j.firmBid,"Hydrovac PR/PO":j.hydroPO,
+  "OH Facilitator":j.ohFacilitator,"UG Area Leader":j.ugLeader,"Yard":j.yard,"Notes":j.notes,"Archived":j.archived?"Yes":"No"};}
+function locRow(L){const r={"Loc #":L.locNo,"Map page / week":L.mapPg,"Region / circuit":L.region,"Location WO":L.wo,"Type":L.type,"Truck access":L.truck,"Pole size":L.poleSize,"Address":L.address,
+  "Est. crew hours":L.estHours==null?"":L.estHours,"Completed hours":L.actHours==null?"":L.actHours,"Var (Act-Est)":(L.estHours==null||L.actHours==null)?"":Math.round((L.actHours-L.estHours)*100)/100,"SD required":L.sd?"Yes":"No","Miss Dig":L.missDig?"Yes":"No","Miss Dig ticket":L.mdTicket,"Ticket start":xd(L.mdStart),"Good through":xd(L.mdGood)};
+  FLAG_KEYS.forEach(f=>{const v=L[f[0]]||{s:"N/A",d:""};r[f[1]]=v.s;r[f[1]+" date"]=xd(v.d);});
+  Object.assign(r,{"Scheduled start":xd(L.sched),"Completed date":xd(L.done),"Crew #":L.crew,"Photo":L.photo,"Status":({done:"Completed",sched:"Scheduled",open:"Open",removed:"Removed"})[locState(L)],"Notes":L.notes});return r;}
+async function exportXlsx(ids){
+  if(typeof XLSX==="undefined"){toast("The Excel library didn't load. Reload the page and try again.");return;}
+  const wb=XLSX.utils.book_new();const used=new Set();
+  const sheetName=s=>{let b=String(s||"Job").replace(/[\[\]\*\?\/\\:]/g," ").trim().slice(0,28)||"Job";let n=b,i=2;while(used.has(n.toLowerCase())){n=b.slice(0,26)+" "+i++;}used.add(n.toLowerCase());return n;};
+  const opts={cellDates:true,dateNF:"mm/dd/yyyy"};
+  const add=(rows,name,hdr)=>{const ws=XLSX.utils.json_to_sheet(rows.length?rows:[],hdr?Object.assign({header:hdr},opts):opts);if(!rows.length&&hdr)XLSX.utils.sheet_add_aoa(ws,[hdr]);
+    const keys=rows.length?Object.keys(rows[0]):(hdr||[]);ws["!cols"]=keys.map(k=>({wch:Math.min(40,Math.max(10,k.length+2))}));XLSX.utils.book_append_sheet(wb,ws,sheetName(name));};
+  let jobs;let fname;
+  if(ids){jobs=ids.map(id=>[id,S.jobs.get(id)]).filter(x=>x[1]);fname=jobName(jobs[0][1]).replace(/[^\w\- ]+/g,"").trim()+" Locations "+todayStr()+".xlsx";add(jobs.map(([,j])=>jobRow(j)),"Job summary");}
+  else{const all=[...S.jobs.entries()].sort((a,b)=>jobName(a[1]).localeCompare(jobName(b[1])));
+    const act=all.filter(x=>!x[1].archived),done=all.filter(x=>x[1].archived);jobs=act.concat(done);fname="PG Project Tracker "+todayStr()+".xlsx";
+    add(act.map(([,j])=>jobRow(j)),"Active Overview");add(done.map(([,j])=>jobRow(j)),"Completed Overview");
+    add(openItems().map(o=>({"Job":jobName(o.j),"Loc #":o.L.locNo,"Address":o.L.address,"Item":o.label,"Status":o.s,"Date":xd(o.d),"Location completed":xd(o.L.done),"Crew #":o.L.crew,"Notes":o.L.notes})),"Open Items");}
+  const lhdr=Object.keys(locRow(emptyLoc(1)));
+  jobs.forEach(([,j])=>add(locsOf(j).map(locRow),jobName(j)+(j.workType&&j.circuit?" "+j.workType:""),lhdr));
+  try{const buf=XLSX.write(wb,{bookType:"xlsx",type:"array",cellDates:true});
+    const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));a.download=fname;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},3000);toast("Export downloaded");}
+  catch(e){toast("Export failed"+(e&&e.message?": "+e.message:"."));}
+}
+
+document.getElementById("btn-new").onclick=()=>{if(!canSave())return;openJobModal(null);};
+document.getElementById("btn-export").onclick=()=>{if(!S.loaded){toast("Jobs haven't loaded yet.");return;}exportXlsx(null);};
+initLogin();
+})();
+</script>
+</body>
+</html>

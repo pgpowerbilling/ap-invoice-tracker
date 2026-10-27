@@ -1,0 +1,18 @@
+{
+ "app": "P&G Power Project Tracker",
+ "version": 1,
+ "repo": {
+  "owner": "pgpowerbilling",
+  "repo": "ap-invoice-tracker",
+  "branch": "main",
+  "base": "projects/"
+ },
+ "users": {
+  "a80881076d72cd958dfefb550088f4a688b9d88ab854c317e969da9aadbb8bbc": {
+   "salt": "oapJVDzDpQr+Ib5a9U5whA==",
+   "iter": 310000,
+   "iv": "NjyffD+QS3aXuaqs",
+   "wrapped": "iuCa5+dXcD9d32L1dKzzq+WNRN/JwQ8to6FhDh9D3Pal1Rjm2vxlMVWSKQu4J2ci"
+  }
+ }
+}
