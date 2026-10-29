@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>P&amp;G Unit Workflow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+/*@@BASECSS@@*/
+/* ---- workflow additions ---- */
+th.num,td.num{text-align:right}
+table.static th{cursor:default}
+table.static tbody tr{cursor:default}
+tfoot td{background:var(--info-bg);border-top:2px solid var(--navy)}
+.banner.bad{border-color:#f0b8c1;border-left-color:var(--red);background:var(--bad-bg);color:#6d0a1a}
+.cta{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--red);border-radius:4px;padding:14px 16px}
+.cta b{display:block;font-size:17px;color:var(--navy)}
+.btn.big{padding:12px 20px;font-size:16px}
+.modal.wide{width:min(900px,calc(100% - 24px))}
+.linelist{display:flex;flex-direction:column;gap:8px}
+.line{display:grid;grid-template-columns:1fr 110px auto;gap:6px 10px;align-items:end;border:1px solid var(--line);border-left:3px solid var(--navy);border-radius:4px;padding:8px 10px;background:var(--zebra)}
+.line .desc{grid-column:1/-1;min-height:0}
+.line .desc:empty{display:none}
+.line .nt{grid-column:1/-1}
+.line .rm{margin-bottom:4px}
+.line input{font-size:16px}
+.who .role{white-space:nowrap}
+.nobill .bill-only{display:none!important}
+.crewonly .nocrew{display:none!important}
+#print{display:none}
+.cl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;align-items:start}
+.cl-sec{border:1px solid var(--line);border-radius:4px;overflow:hidden;background:var(--panel)}
+.cl-h{display:flex;justify-content:space-between;background:var(--navy);color:#fff;font-weight:700;font-size:13px;letter-spacing:.04em;text-transform:uppercase;padding:8px 12px}
+.cl-row{display:grid;grid-template-columns:1fr 92px;gap:8px;align-items:center;padding:6px 12px;border-top:1px solid var(--line);font-size:14.5px;cursor:text}
+.cl-row:nth-child(odd){background:var(--zebra)}
+.cl-row input{border:1px solid var(--field);border-radius:4px;padding:7px 8px;text-align:right;font-size:16px;width:100%;background:var(--panel)}
+.cl-row input:focus{outline:2px solid var(--blue);outline-offset:-1px;border-color:var(--blue)}
+.polepick{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.pp{border:1px solid var(--field);background:var(--panel);border-radius:4px;padding:6px 10px;text-align:left;font-size:14px}
+.pp.on{border-color:var(--navy);background:var(--info-bg);box-shadow:inset 3px 0 0 var(--red)}
+.pp:hover{border-color:var(--navy)}
+.line select{border:1px solid var(--field);border-radius:4px;padding:8px 10px;background:var(--panel);width:100%}
+table.static thead tr.subh td{background:var(--info-bg);font-weight:700;font-size:12.5px;color:var(--navy)}
+table.static thead th[colspan]{text-transform:none;letter-spacing:.01em;font-size:13px;white-space:normal}
+@media (max-width:640px){
+  .modal,.modal.wide,.modal.small{left:0;top:0;transform:none;width:100%!important;height:100%;max-height:100%;border-radius:0}
+  label.f input,label.f select,label.f textarea{font-size:16px}
+  .tabs a{padding:6px 8px}
+  .jobhead h1{font-size:22px}
+  .pp{flex:1 1 100%}
+  .cl-grid{grid-template-columns:1fr}
+}
+/* print: invoice only */
+@media print{
+  body.printing #app,body.printing #overlay,body.printing #login,body.printing .toast{display:none!important}
+  body.printing #print{display:block}
+  html,body{background:#fff}
+  @page{margin:14mm}
+}
+.pv{font:12px/1.45 var(--f);color:#111}
+.pv-head{display:flex;justify-content:space-between;align-items:flex-start}
+.pv-head img{height:64px}
+.pv-from{font-size:10.5px;color:#444;margin-top:6px;line-height:1.35}
+.pv-h2{font-size:14px;color:var(--navy);margin:0 0 8px;letter-spacing:.04em}
+.pv-break{break-before:page;page-break-before:always;height:0}
+.pv-pole{margin-bottom:10px;break-inside:avoid}
+.pv-lines tr.subh td{background:#eef2fb;font-weight:700;font-size:10.5px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.pv-pole tfoot td{font-size:11.5px}
+.pv-title{text-align:right}
+.pv-title h1{margin:0 0 6px;font-size:26px;color:var(--navy);letter-spacing:.08em}
+.pv-meta td{padding:1px 0 1px 14px;border:0;text-align:right}
+.pv-stripe{height:4px;background:linear-gradient(90deg,var(--red) 0 50%,var(--navy) 50% 100%);margin:12px 0 14px}
+.pv-parties{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px}
+.pv-parties span{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#555}
+.pv-lines{width:100%;border-collapse:collapse}
+.pv-lines th{background:var(--navy);color:#fff;font-size:10.5px;padding:6px 8px;text-transform:uppercase;position:static;cursor:default;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.pv-lines td{padding:5px 8px;border-top:1px solid #ccc;white-space:normal}
+.pv-lines tfoot td{font-weight:700;font-size:13px;border-top:2px solid var(--navy);background:#fff}
+.pv-notes,.pv-foot{margin-top:14px}
+.pv-foot{color:#555;font-size:10.5px}
+</style>
+</head>
+<body>
+
+<section id="login">
+  <form class="login-card" id="loginForm" autocomplete="on">
+    <img class="login-logo" src="../pg-logo.jpg" alt="P&amp;G Power Co.">
+    <p class="login-title">Unit Workflow</p>
+    <p class="login-sub">Sign in to continue</p>
+    <label for="u">Username</label>
+    <input id="u" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" required>
+    <label for="p">Password</label>
+    <input id="p" name="password" type="password" autocomplete="current-password" required>
+    <div class="err" id="loginErr" role="alert"></div>
+    <button class="btn primary" style="width:100%;margin-top:6px" id="loginBtn">Sign in</button>
+  </form>
+</section>
+
+<div id="app" hidden>
+<header class="mast"><div class="stripe"></div>
+  <div class="wrap toprow">
+    <div class="brand"><img src="../pg-logo.jpg" alt="P&amp;G Power Co."><div class="t"><b>Unit Workflow</b><span>Crew sheets · GF approval · Billing · Invoices</span></div></div>
+    <div class="who"><span class="nm" id="meName"></span><span class="role" id="meRole"></span>
+      <button class="btn sm a-only" id="btn-logins" type="button">Logins</button>
+      <button class="btn sm a-only" id="btn-settings" type="button">Settings</button>
+      <button class="btn sm" id="btn-pw" type="button">Change password</button>
+      <button class="btn sm" id="btn-out" type="button">Sign out</button></div>
+  </div>
+  <div class="navrow"><div class="wrap">
+    <nav class="tabs" aria-label="Views">
+      <a href="#sheets" data-nav="sheets">Unit sheets<span class="ct" id="ct-sheets"></span></a>
+      <a href="#poles" data-nav="poles" class="nocrew">Pole register<span class="ct" id="ct-poles"></span></a>
+      <a href="#invoices" data-nav="invoices" class="nocrew">Invoices<span class="ct" id="ct-inv"></span></a>
+      <a href="#jobs" data-nav="jobs" class="nocrew">Jobs<span class="ct" id="ct-jobs"></span></a>
+      <a href="#rates" data-nav="rates" class="nocrew">Rates</a>
+    </nav>
+    <div class="mast-actions">
+      <button class="btn primary w-only" id="btn-new" type="button">+ New unit sheet</button>
+    </div>
+  </div></div>
+</header>
+<div class="wrap" id="bannerWrap"></div>
+<main class="wrap" id="main"><div class="empty"><b>Loading…</b>Decrypting the workflow data.</div></main>
+<footer class="wrap foot">P&amp;G Power Co. · Workflow data is encrypted and visible only to authorized logins.</footer>
+</div>
+<div id="overlay"></div>
+<div id="print" aria-hidden="true"></div>
+
+<script>
+/*@@TMPLJS@@*/
+</script>
+<script>
+/*@@APPJS@@*/
+</script>
+</body>
+</html>

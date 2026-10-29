@@ -1,0 +1,24 @@
+{
+ "app": "P&G Power Unit Workflow",
+ "version": 1,
+ "repo": {
+  "owner": "pgpowerbilling",
+  "repo": "ap-invoice-tracker",
+  "branch": "main",
+  "base": "workflow/"
+ },
+ "users": {
+  "b05047f936a8f53a1a90cd4dbd27c33682cb2ae9efe2d4c4de7cc94c39bd411d": {
+   "salt": "b3o/BOdm1/RYXU6crK8pMg==",
+   "iter": 310000,
+   "iv": "BFqelLBiAhwMVoh7",
+   "wrapped": "V+6rHvpdIOVXOn70F9Il2w548+YUxuAdc1nIBWE7XH862c/IVA0sHva51cjnSVOH"
+  },
+  "91bfa2ab03bc935b0f782affdfc6471c33fc96171fdc8c0cf00a24ccb7aa13b6": {
+   "salt": "NUrS4tVvjNcVFqiMbR9R1A==",
+   "iter": 310000,
+   "iv": "s+ZTm7q66MjvLHVS",
+   "wrapped": "CQVaN1I9TXfN/xIQKYs1HEWyAAEnuBWwWyteHAe+tnJAuy5hhiKlnjgJ1n2Moa1g"
+  }
+ }
+}
