@@ -98,6 +98,11 @@ async function fill(buf,inv){
     let wr=await t.zip.file("xl/_rels/workbook.xml.rels").async("string");wr=wr.replace(/<Relationship[^>]*calcChain[^>]*\/>/,"");t.zip.file("xl/_rels/workbook.xml.rels",wr);}
   return t.zip.generateAsync({type:"uint8array",compression:"DEFLATE",mimeType:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
 }
-return{parse,fill,itemKey,norm};
+/* any workbook -> {names, get(name) -> rows of cell values} for importing location lists */
+async function tables(buf){const t=await open(buf);const names=Object.keys(t.sheets);
+  return{names,get:async name=>{const m=await read(t,name);let mr=0,mc=0;const cells=[];
+    m.forEach((v,ref)=>{const {col,row}=splitRef(ref);const c=colNum(col);if(v==null||v==="")return;cells.push([row,c,v]);if(row>mr)mr=row;if(c>mc)mc=c;});
+    const out=Array.from({length:mr},()=>Array(mc).fill(""));cells.forEach(([r,c,v])=>{out[r-1][c-1]=v;});return out;}};}
+return{parse,fill,tables,itemKey,norm};
 })();
 if(typeof module!=="undefined")module.exports=TMPL;

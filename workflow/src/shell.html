@@ -32,6 +32,11 @@ tfoot td{background:var(--info-bg);border-top:2px solid var(--navy)}
 .nobill .bill-only{display:none!important}
 .crewonly .nocrew{display:none!important}
 #print{display:none}
+.tbtn{text-align:left;font:inherit;cursor:pointer}
+.tbtn:hover{border-color:var(--navy);background:var(--hover)}
+.tabs a[hidden]{display:none}
+.tabs a .ct:empty{display:none}
+.grid-edit select{padding:5px 7px;border:1px solid var(--field);border-radius:4px;background:var(--panel);max-width:190px}
 .cl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;align-items:start}
 .cl-sec{border:1px solid var(--line);border-radius:4px;overflow:hidden;background:var(--panel)}
 .cl-h{display:flex;justify-content:space-between;background:var(--navy);color:#fff;font-weight:700;font-size:13px;letter-spacing:.04em;text-transform:uppercase;padding:8px 12px}
@@ -112,11 +117,10 @@ table.static thead th[colspan]{text-transform:none;letter-spacing:.01em;font-siz
   </div>
   <div class="navrow"><div class="wrap">
     <nav class="tabs" aria-label="Views">
-      <a href="#sheets" data-nav="sheets">Unit sheets<span class="ct" id="ct-sheets"></span></a>
-      <a href="#poles" data-nav="poles" class="nocrew">Pole register<span class="ct" id="ct-poles"></span></a>
-      <a href="#invoices" data-nav="invoices" class="nocrew">Invoices<span class="ct" id="ct-inv"></span></a>
-      <a href="#jobs" data-nav="jobs" class="nocrew">Jobs<span class="ct" id="ct-jobs"></span></a>
-      <a href="#rates" data-nav="rates" class="nocrew">Rates</a>
+      <a href="#overview" data-nav="overview">Overview<span class="ct" id="ct-jobs"></span></a>
+      <a href="#addjob" data-nav="addjob" class="nocrew bill-only">Add Job</a>
+      <a href="#invoices" data-nav="invoices" class="nocrew">Invoices<span class="ct" id="ct-ready"></span></a>
+      <a href="#rates" data-nav="rates" class="nocrew" hidden>Rates</a>
     </nav>
     <div class="mast-actions">
       <button class="btn primary w-only" id="btn-new" type="button">+ New unit sheet</button>
