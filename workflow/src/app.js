@@ -538,13 +538,13 @@ function renderJob(){
   main.innerHTML='<a class="back" href="#overview">← Overview</a>'+
     '<section class="jobhead"><div><h1>'+esc(j.name)+'</h1><div class="meta">'+(j.archived?'<span class="chip c-stage">Closed</span>':'<span class="chip c-done">Active</span>')+"<span>"+esc(j.customer)+"</span>"+(j.po?"<span>PO "+esc(j.po)+"</span>":"")+(j.wo?"<span>WO / Job # "+esc(j.wo)+"</span>":"")+'</div></div><div class="acts">'+
       (can.newSheet()&&!j.archived?'<button class="btn primary" type="button" id="jb-sheet">+ New unit sheet</button>':"")+
-      (can.setup()?'<button class="btn" type="button" id="jb-add">+ Add locations</button><button class="btn" type="button" id="jb-edit">Edit job</button>':"")+(role()!=="crew"?'<button class="btn" type="button" id="jb-csv">Export CSV</button>':"")+"</div></section>"+
+      '<button class="btn" type="button" id="jb-print"'+((j.poles||[]).length?"":" disabled")+'>Print Unit Sheets</button>'+(can.setup()?'<button class="btn" type="button" id="jb-add">+ Add locations</button><button class="btn" type="button" id="jb-edit">Edit job</button>':"")+(role()!=="crew"?'<button class="btn" type="button" id="jb-csv">Export CSV</button>':"")+"</div></section>"+
     (!j.area&&(j.poles||[]).some(p=>!p.area)&&role()!=="crew"?'<div class="banner">No default pricing area is set for this job, so locations without their own area can\'t be priced. Set it with <b>Edit job</b>.</div>':"")+
     '<section class="tiles">'+tile("Locations",st.locs,st.started+" started",false)+tile("Awaiting GF",st.sub,"Crew sheets",false)+tile("Awaiting billing",st.gf,"GF approved",false)+tile("Ready to invoice",st.ok,"Approved for invoice",false)+tile("Invoiced",st.inv,"Sheets on invoices",false)+(can.seePrice()?tile("Approved $",st.ok+st.inv?(st.apprOk?money(st.appr):"Check"):"$0.00","Ready + invoiced",false):"")+"</section>"+
     '<div class="subtabs" role="tablist"><button role="tab" type="button" id="t-locs" aria-selected="'+(tab==="locs")+'">Locations</button><button role="tab" type="button" id="t-sheets" aria-selected="'+(tab==="sheets")+'">Unit sheets ('+ss.filter(s=>s.jobId===j.id).length+')</button></div><div id="jbody"></div>';
   document.getElementById("t-locs").onclick=()=>{S.jobTab="locs";renderJob();};document.getElementById("t-sheets").onclick=()=>{S.jobTab="sheets";renderJob();};
   const on=(i,fn)=>{const b=document.getElementById(i);if(b)b.onclick=fn;};
-  on("jb-sheet",()=>openSheetForm(null,j.id));on("jb-add",()=>openAddLocations(j.id));on("jb-edit",()=>openJobForm(j.id));
+  on("jb-sheet",()=>openSheetForm(null,j.id));on("jb-print",()=>openPrintPicker(j.id));on("jb-add",()=>openAddLocations(j.id));on("jb-edit",()=>openJobForm(j.id));
   on("jb-csv",()=>{const sx=sheets();const head=["#","Ticket ID","Town","Street","ES Pole #","VZ Pole #","PDF Page","WO / Job #","Pricing Area","Date Set","Status","Sheets","Notes"];
     const lines=[head].concat((j.poles||[]).map(p=>{const sh=sx.filter(s=>s.jobId===j.id&&s.poleId===p.id);return[p.n,p.ticket,p.town,p.street,p.esPole,p.vzPole,p.pdfPage,p.woJob||j.wo,poleArea(j,p),p.dateSet,poleStatus(sh)[0],sh.map(s=>s.no).join(" "),p.notes];}));
     download(new Blob(["﻿"+lines.map(r=>r.map(v=>'"'+String(v==null?"":v).replace(/"/g,'""')+'"').join(",")).join("\r\n")],{type:"text/csv"}),"Locations - "+j.name+".csv");});
@@ -557,7 +557,7 @@ function renderJob(){
     bindRows(tb,id=>location.hash="sheet-"+id);return;}
   const q=S.pf.q||"",stf=S.pf.st||"";
   box.innerHTML='<div class="filters" style="margin-bottom:10px"><input type="search" id="pl-q" placeholder="Search street, pole #, ticket…" aria-label="Search locations" value="'+esc(q)+'"><select id="pl-st" aria-label="Status"><option value="">All statuses</option>'+["Not started","Awaiting GF","Returned to field","Awaiting billing","Ready to invoice","Invoiced"].map(s=>"<option"+(s===stf?" selected":"")+">"+s+"</option>").join("")+'</select><span class="count" id="pl-count"></span></div>'+
-    '<div class="tablebox"><table><thead><tr><th class="nosort">#</th><th class="nosort">Ticket ID</th><th class="nosort">Town</th><th class="nosort">Street</th><th class="nosort">ES pole #</th><th class="nosort">VZ pole #</th><th class="nosort">PDF page</th><th class="nosort">Pricing area</th><th class="nosort">Sheets</th>'+(can.seePrice()?'<th class="nosort num">Approved $</th>':"")+'<th class="nosort">Status</th><th class="nosort">Notes</th></tr></thead><tbody id="pl-body"></tbody></table></div>';
+    '<div class="tablebox"><table><thead><tr><th class="nosort">#</th><th class="nosort">Ticket ID</th><th class="nosort">Town</th><th class="nosort">Street</th><th class="nosort">ES pole #</th><th class="nosort">VZ pole #</th><th class="nosort">PDF page</th><th class="nosort">Pricing area</th><th class="nosort">Sheets</th>'+(can.seePrice()?'<th class="nosort num">Approved $</th>':"")+'<th class="nosort">Status</th><th class="nosort">Notes</th><th class="nosort"></th></tr></thead><tbody id="pl-body"></tbody></table></div>';
   const qi=document.getElementById("pl-q"),si=document.getElementById("pl-st");qi.oninput=()=>{S.pf.q=qi.value;fill();};si.onchange=()=>{S.pf.st=si.value;fill();};
   function fill(){const tb=document.getElementById("pl-body");const qq=(S.pf.q||"").trim().toLowerCase();const sx=sheets();
     const rows=(j.poles||[]).map(p=>{const sh=sx.filter(s=>s.jobId===j.id&&s.poleId===p.id);const stt=poleStatus(sh);
@@ -565,9 +565,49 @@ function renderJob(){
       .filter(r=>(!qq||[r.p.street,r.p.esPole,r.p.vzPole,r.p.ticket,r.p.town,r.p.notes].join(" ").toLowerCase().indexOf(qq)>=0)&&(!S.pf.st||r.stt[0]===S.pf.st));
     document.getElementById("pl-count").textContent=rows.length+" of "+(j.poles||[]).length+" locations";
     tb.innerHTML=rows.map(r=>{const p=r.p;const ar=poleArea(j,p);return'<tr tabindex="0" data-id="'+esc(p.id)+'"><td class="mono">'+esc(p.n)+'</td><td class="mono">'+esc(p.ticket)+"</td><td>"+esc(p.town)+"</td><td><b>"+esc(p.street)+'</b></td><td class="mono">'+esc(p.esPole)+'</td><td class="mono">'+esc(p.vzPole)+'</td><td class="mono">'+esc(p.pdfPage)+"</td><td>"+(ar?esc(ar)+(p.area?"":' <span class="sub">(job default)</span>'):'<span class="late">Not set</span>')+'</td><td class="mono">'+r.sh.length+"</td>"+
-      (can.seePrice()?'<td class="mono num">'+(r.napp?(r.amt==null?'<span class="sub">Check pricing</span>':money(r.amt)):"")+"</td>":"")+'<td><span class="chip '+r.stt[1]+'">'+esc(r.stt[0])+'</span></td><td class="wrapc sub">'+esc(p.notes)+"</td></tr>";}).join("")||'<tr><td colspan="12"><div class="empty"><b>No locations</b>'+((j.poles||[]).length?"Nothing matches the filters.":(can.setup()?"Use + Add locations.":""))+"</div></td></tr>";
+      (can.seePrice()?'<td class="mono num">'+(r.napp?(r.amt==null?'<span class="sub">Check pricing</span>':money(r.amt)):"")+"</td>":"")+'<td><span class="chip '+r.stt[1]+'">'+esc(r.stt[0])+'</span></td><td class="wrapc sub">'+esc(p.notes)+'</td><td><button class="btn sm" type="button" data-print="'+esc(p.id)+'" aria-label="Print unit sheet for '+esc(p.street+" "+p.esPole)+'">Print</button></td></tr>';}).join("")||'<tr><td colspan="13"><div class="empty"><b>No locations</b>'+((j.poles||[]).length?"Nothing matches the filters.":(can.setup()?"Use + Add locations.":""))+"</div></td></tr>";
+    tb.querySelectorAll("[data-print]").forEach(b=>b.onclick=ev=>{ev.stopPropagation();printUnitSheets(j,[poleById(j,b.dataset.print)]);});
     if(role()!=="crew")bindRows(tb,pid=>openPoleForm(j.id,pid));}
   fill();
+}
+
+/* ---------- printable crew daily unit checklist (one page per location) ---------- */
+function unitSheetPage(j,p,i,n){
+  const box=(label,val,cls)=>'<div class="us-f '+(cls||"")+'"><span>'+esc(label)+'</span><div class="us-box">'+esc(val||"")+"</div></div>";
+  const sec=s=>'<table class="us-sec"><thead><tr><th>'+esc(s[0])+'</th><th class="q">QTY</th></tr></thead><tbody>'+s[1].map(it=>"<tr><td>"+esc(it[1])+'</td><td class="q"></td></tr>').join("")+"</tbody></table>";
+  const L=CREW_SECTIONS.slice(0,4),Rt=CREW_SECTIONS.slice(4);
+  return'<section class="us-page"><div class="us-top"><div><h1>CREW DAILY UNIT CHECKLIST</h1><div class="us-awc">AWC <span class="us-line"></span></div></div><div class="us-job"><img src="../pg-logo.jpg" alt="P&amp;G Power Co."><b>'+esc(j.name)+"</b>"+(j.po?"<span>PO "+esc(j.po)+"</span>":"")+"</div></div>"+
+    '<div class="us-row">'+box("DATE","","w1")+box("CREW / LEAD","","w2")+box("WORK ORDER #",p.woJob||j.wo,"w1")+box("FWO #","","w1")+"</div>"+
+    '<div class="us-row">'+box("POLE # / LOCATION",[p.esPole,[p.street,p.town].filter(Boolean).join(", ")].filter(Boolean).join(" — "),"w3")+'<div class="us-f w1"><span>POLE SET?</span><div class="us-box">[&nbsp;&nbsp;] YES &nbsp;&nbsp; [&nbsp;&nbsp;] NO</div></div></div>'+
+    '<div class="us-row">'+box("TICKET ID",p.ticket,"w1")+box("VZ POLE #",p.vzPole,"w1")+box("LOCATION #",String(p.n||""),"w1")+box("PDF PAGE",p.pdfPage,"w1")+"</div>"+
+    '<div class="us-cols"><div>'+L.map(sec).join("")+"</div><div>"+Rt.map(sec).join("")+'<table class="us-sec"><thead><tr><th>OTHER UNITS</th><th class="q">QTY</th></tr></thead><tbody><tr><td></td><td class="q"></td></tr><tr><td></td><td class="q"></td></tr><tr><td></td><td class="q"></td></tr></tbody></table></div></div>'+
+    '<div class="us-notes"><b>NOTES / EXTRAS / DIFFICULTY JUSTIFICATION:</b>'+(p.notes?'<div class="us-pn">Packet note: '+esc(p.notes)+"</div>":"")+'<div class="us-l"></div><div class="us-l"></div><div class="us-l"></div></div>'+
+    '<div class="us-foot">P&amp;G Power Co. · '+esc(j.name)+" · Location "+(i+1)+" of "+n+"</div></section>";}
+function printUnitSheets(j,poles){
+  if(!poles.length){toast("Select at least one location.");return;}
+  const p=document.getElementById("print");
+  p.innerHTML='<div class="us">'+poles.map((x,i)=>unitSheetPage(j,x,i,poles.length)).join("")+"</div>";
+  document.body.classList.add("printing");const prev=document.title;document.title="Unit Sheets - "+j.name;
+  const done=()=>{document.body.classList.remove("printing");document.title=prev;window.removeEventListener("afterprint",done);};
+  window.addEventListener("afterprint",done);
+  const imgs=[...p.querySelectorAll("img")];Promise.all(imgs.map(im=>im.complete?1:new Promise(r=>{im.onload=im.onerror=r;}))).then(()=>setTimeout(()=>window.print(),150));
+}
+function openPrintPicker(jid){
+  const j=jobById(jid);const ps=(j.poles||[]).slice().sort((a,b)=>(a.n||0)-(b.n||0));const sx=sheets();
+  const started=new Set(sx.filter(s=>s.jobId===jid).map(s=>s.poleId));
+  const m=modal("Print unit sheets — "+j.name,'<div class="row-inline"><button class="btn sm" type="button" id="pp-all">All</button><button class="btn sm" type="button" id="pp-ns">Not started</button><button class="btn sm" type="button" id="pp-none">Clear</button><input type="search" id="pp-q" placeholder="Filter street, pole #, ticket…" aria-label="Filter locations" style="flex:1 1 200px;padding:6px 10px;border:1px solid var(--field);border-radius:4px"></div>'+
+    '<div class="ulist" id="pp-list" style="max-height:52vh;overflow:auto">'+ps.map(p=>'<label class="u" style="grid-template-columns:auto 1fr auto;cursor:pointer" data-hay="'+esc([p.street,p.esPole,p.ticket,p.town,p.vzPole].join(" ").toLowerCase())+'"><input type="checkbox" data-p="'+esc(p.id)+'"><span><span class="mono sub">#'+esc(p.n)+"</span> <b>"+esc(p.street)+"</b> · "+esc(p.esPole)+' <span class="sub">'+esc(p.ticket)+"</span></span>"+(started.has(p.id)?'<span class="chip c-sch">Has sheet</span>':'<span class="chip c-stage">Not started</span>')+"</label>").join("")+"</div>",
+    '<button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="pp-go">Print 0 sheets</button>',"wide");
+  const boxes=[...m.querySelectorAll("[data-p]")];const go=m.querySelector("#pp-go");
+  const upd=()=>{const n=boxes.filter(b=>b.checked).length;go.textContent="Print "+n+" sheet"+(n===1?"":"s");go.disabled=!n;};
+  boxes.forEach(b=>b.onchange=upd);
+  const vis=b=>!b.closest("label").hidden;
+  m.querySelector("#pp-all").onclick=()=>{boxes.forEach(b=>{if(vis(b))b.checked=true;});upd();};
+  m.querySelector("#pp-none").onclick=()=>{boxes.forEach(b=>b.checked=false);upd();};
+  m.querySelector("#pp-ns").onclick=()=>{boxes.forEach(b=>b.checked=vis(b)&&!started.has(b.dataset.p));upd();};
+  m.querySelector("#pp-q").oninput=e=>{const q=e.target.value.trim().toLowerCase();boxes.forEach(b=>{const l=b.closest("label");l.hidden=!!q&&l.dataset.hay.indexOf(q)<0;});};
+  upd();
+  go.onclick=()=>{const ids=new Set(boxes.filter(b=>b.checked).map(b=>b.dataset.p));const sel=ps.filter(p=>ids.has(p.id));closeOverlay();printUnitSheets(j,sel);};
 }
 
 /* ---------- location grid (Add Job / Add locations) ---------- */
