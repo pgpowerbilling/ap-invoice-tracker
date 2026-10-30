@@ -208,6 +208,9 @@ tfoot td{background:var(--info-bg);border-top:2px solid var(--navy)}
 .tabs a[hidden]{display:none}
 .tabs a .ct:empty{display:none}
 [hidden]{display:none!important}
+.sigbox{display:flex;gap:12px;align-items:flex-start;border:2px dashed var(--navy);border-radius:6px;padding:12px 14px;background:var(--info-bg);cursor:pointer;font-size:14.5px}
+.sigbox input{width:22px;height:22px;margin-top:2px;flex:none}
+.sig{color:var(--ok);font-weight:700}
 .su-card{border:1px solid var(--line);border-left:4px solid var(--navy);border-radius:4px;padding:10px 12px;margin-top:10px;display:flex;flex-direction:column;gap:8px;background:var(--panel)}
 .su-card.off{opacity:.55;border-left-color:var(--line)}
 .su-head{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:flex-end}
@@ -629,8 +632,10 @@ if(typeof module!=="undefined")module.exports=PKG;
 "use strict";
 /* ---------- constants ---------- */
 const ST={SUB:"submitted",RET:"returned",GF:"gf_approved",OK:"approved",INV:"invoiced"};
-const ST_LABEL={submitted:"Awaiting GF",returned:"Returned to field",gf_approved:"Awaiting billing",approved:"Ready to invoice",invoiced:"Invoiced"};
-const ST_CHIP={submitted:"c-sch",returned:"c-bad",gf_approved:"c-req",approved:"c-done",invoiced:"c-stage"};
+const ST_LABEL={submitted:"Awaiting GF signature",returned:"Returned to field",gf_approved:"Ready to bill",approved:"Ready to bill",invoiced:"Invoiced"};
+/* GF signature moves a sheet straight to Ready to bill; gf_approved is kept only for sheets approved under the old two-step flow */
+const isReady=d=>d.status===ST.OK||d.status===ST.GF;
+const ST_CHIP={submitted:"c-sch",returned:"c-bad",gf_approved:"c-done",approved:"c-done",invoiced:"c-stage"};
 const ST_ORDER=[ST.SUB,ST.RET,ST.GF,ST.OK,ST.INV];
 const ROLES={admin:"Admin",approver:"Billing approver",gf:"General Foreman",crew:"Crew",viewer:"Viewer"};
 const ROLE_HELP={admin:"Admin — everything, incl. logins, jobs, rates",approver:"Billing approver — final approval, invoices",gf:"General Foreman — review and approve crew sheets",crew:"Crew — submit daily unit sheets",viewer:"Viewer — read only"};
@@ -702,10 +707,10 @@ const hasToken=()=>!!(S.index&&S.index.ghToken);
 const W=()=>!!S.me&&role()!=="viewer";
 const can={
   newSheet:()=>W()&&["admin","gf","crew"].includes(role()),
-  editSheet:d=>W()&&d.status!==ST.INV&&(isAdmin()||(role()==="approver"&&[ST.GF,ST.OK].includes(d.status))||(role()==="gf"&&[ST.SUB,ST.RET].includes(d.status))||(role()==="crew"&&d.createdByKey===S.myKey&&[ST.SUB,ST.RET].includes(d.status))),
+  editSheet:d=>W()&&d.status!==ST.INV&&(isAdmin()||(role()==="approver"&&isReady(d))||(role()==="gf"&&[ST.SUB,ST.RET].includes(d.status))||(role()==="crew"&&d.createdByKey===S.myKey&&[ST.SUB,ST.RET].includes(d.status))),
   gf:d=>W()&&(isAdmin()||role()==="gf")&&d.status===ST.SUB,
-  bill:d=>W()&&isBill()&&d.status===ST.GF,
-  reopen:d=>W()&&isBill()&&d.status===ST.OK,
+  bill:()=>false,
+  reopen:d=>W()&&isBill()&&isReady(d),
   hold:d=>W()&&(isBill()||role()==="gf")&&[ST.SUB,ST.GF,ST.OK].includes(d.status),
   invoice:()=>W()&&isBill(),
   setup:()=>W()&&isBill(),
@@ -947,7 +952,7 @@ function route(){
   if(h.indexOf("sheet-")===0){S.view="sheet";S.docId=h.slice(6);}
   else if(h.indexOf("inv-")===0){S.view="invoice";S.docId=h.slice(4);}
   else if(h.indexOf("jobedit-")===0){S.view="jobedit";S.docId=h.slice(8);}
-  else if(h.indexOf("job-")===0){const id=h.slice(4);if(S.view!=="job"||S.docId!==id){S.jobTab="locs";S.pf={q:"",st:""};}S.view="job";S.docId=id;}
+  else if(h.indexOf("job-")===0){const id=h.slice(4);if(S.view!=="job"||S.docId!==id){S.jobTab=null;S.pf={q:"",st:""};}S.view="job";S.docId=id;}
   else if(["invoices","addjob","addjob-new","rates","sheets"].includes(h))S.view=h;else S.view="overview";
   if(role()==="crew"&&!["overview","job","sheet","sheets"].includes(S.view))S.view="overview";
   if(S.view==="rates"&&!canRates())S.view="overview";
@@ -962,7 +967,7 @@ function refresh(){
   if(!S.loaded)return;
   const set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
   set("ct-jobs",jobs().filter(j=>!j.archived).length||"");
-  set("ct-ready",sheets().filter(s=>s.status===ST.OK).length||"");
+  set("ct-ready",sheets().filter(isReady).length||"");
   document.getElementById("btn-new").hidden=!can.newSheet();
   document.querySelectorAll("[data-nav=rates]").forEach(a=>a.hidden=!canRates());
   const v=S.view;
@@ -991,17 +996,17 @@ function renderSheets(){
   main.innerHTML='<a class="back" href="#overview">← Overview</a>'+(crew?'<div class="cta"><div><b>Crew daily unit sheets</b><span class="sub">Fill out one sheet per location. Your General Foreman reviews each sheet before it goes to billing.</span></div><button class="btn primary big w-only" type="button" id="cta-new">+ New unit sheet</button></div>':"")+
     '<h2 class="sec">Workflow</h2><section class="tiles">'+
     tile("Awaiting GF",cnt(ST.SUB),"Crew sheets to review",false)+tile("Returned to field",cnt(ST.RET),"Sent back for fixes",cnt(ST.RET)>0)+
-    tile("Awaiting billing",cnt(ST.GF),"GF approved for billing",false)+tile("Ready to invoice",cnt(ST.OK),"Billing approved for invoice",false)+tile("Invoiced",cnt(ST.INV),"On an invoice",false)+"</section>"+
+    tile("Ready to bill",cnt(ST.OK)+cnt(ST.GF),"Signed by the GF",false)+tile("Invoiced",cnt(ST.INV),"On an invoice",false)+"</section>"+
     '<div class="filters" role="search"><input type="search" id="f-q" placeholder="Search sheet #, street, pole, ticket, crew…" aria-label="Search unit sheets" value="'+esc(S.f.q)+'">'+
-    '<select id="f-st" aria-label="Status"><option value="open">All open (not invoiced)</option><option value="">All sheets</option>'+ST_ORDER.map(s=>'<option value="'+s+'">'+esc(ST_LABEL[s])+"</option>").join("")+'<option value="hold">On hold</option></select>'+
+    '<select id="f-st" aria-label="Status"><option value="open">All open (not invoiced)</option><option value="">All sheets</option>'+[ST.SUB,ST.RET,ST.OK,ST.INV].map(s=>'<option value="'+s+'">'+esc(ST_LABEL[s])+"</option>").join("")+'<option value="hold">On hold</option></select>'+
     '<select id="f-job" aria-label="Job"><option value="">All jobs</option>'+jobs().map(j=>'<option value="'+esc(j.id)+'">'+esc(j.name)+"</option>").join("")+'</select><span class="count" id="f-count"></span></div>'+
-    '<div class="tablebox"><table><thead><tr><th class="nosort">Sheet #</th><th class="nosort">Work date</th><th class="nosort">Job</th><th class="nosort">Pole / location</th><th class="nosort">Crew / lead</th><th class="nosort">Units</th>'+(can.seePrice()?'<th class="nosort num">Amount</th>':"")+'<th class="nosort">Status</th><th class="nosort">Last update</th></tr></thead><tbody id="tb"></tbody></table></div>';
+    '<div class="tablebox"><table><thead><tr><th class="nosort">Sheet #</th><th class="nosort">Work date</th><th class="nosort">Job</th><th class="nosort">Pole / location</th><th class="nosort">Crew / lead</th><th class="nosort">Units</th>'+(can.seePrice()?'<th class="nosort num">Amount</th>':"")+'<th class="nosort">Status</th><th class="nosort">Last update</th></tr></thead><tbody id="tb"></tbody></table></div><div id="gf-bulk" hidden></div>';
   const cta=document.getElementById("cta-new");if(cta)cta.onclick=()=>openSheetForm(null);
   const q=document.getElementById("f-q"),st=document.getElementById("f-st"),jb=document.getElementById("f-job");st.value=S.f.status;jb.value=S.f.job;
   q.oninput=()=>{S.f.q=q.value;fill();};st.onchange=()=>{S.f.status=st.value;fill();};jb.onchange=()=>{S.f.job=jb.value;fill();};
   function fill(){
     const qq=S.f.q.trim().toLowerCase();
-    const rows=all.filter(s=>{if(S.f.status==="open"){if(s.status===ST.INV)return false;}else if(S.f.status==="hold"){if(!(s.hold&&s.hold.on))return false;}else if(S.f.status&&s.status!==S.f.status)return false;
+    const rows=all.filter(s=>{if(S.f.status==="open"){if(s.status===ST.INV)return false;}else if(S.f.status==="hold"){if(!(s.hold&&s.hold.on))return false;}else if(S.f.status===ST.OK){if(!isReady(s))return false;}else if(S.f.status&&s.status!==S.f.status)return false;
       if(S.f.job&&s.jobId!==S.f.job)return false;
       if(qq){const j=jobById(s.jobId);const hay=[s.no,j&&j.name,sheetPoleText(s),s.crew,s.wo,s.fwo].join(" ").toLowerCase();if(hay.indexOf(qq)<0)return false;}
       return true;}).sort((a,b)=>ST_ORDER.indexOf(a.status)-ST_ORDER.indexOf(b.status)||String(b.workDate).localeCompare(String(a.workDate))||String(b.no).localeCompare(String(a.no)));
@@ -1012,6 +1017,7 @@ function renderSheets(){
         (pr?'<td class="mono num">'+(pr.total==null?'<span class="sub" title="'+esc(pr.errs.join("; "))+'">Check pricing</span>':money(pr.total))+"</td>":"")+"<td>"+stChip(s)+'</td><td class="sub">'+esc(fmtT(s.updatedAt))+"<br>"+esc(s.updatedBy||"")+"</td></tr>";}).join("")
       :'<tr><td colspan="9"><div class="empty"><b>No unit sheets here</b>'+(can.newSheet()?"Use + New unit sheet to log the units completed at a pole.":"Sheets appear here once crews submit them.")+"</div></td></tr>";
     bindRows(tb,id=>location.hash="sheet-"+id);
+    const gh=document.getElementById("gf-bulk");if(gh){const tbx=document.getElementById("tb").closest(".tablebox");if(S.f.status===ST.SUB&&canGfSign()){gfTable(gh,rows.filter(r=>r.status===ST.SUB),true);gh.hidden=false;tbx.hidden=true;}else{gh.hidden=true;gh.innerHTML="";tbx.hidden=false;}}
   }
   fill();
 }
@@ -1032,9 +1038,9 @@ function renderSheet(){
   const acts=[];
   if(can.editSheet(d))acts.push('<button class="btn" type="button" id="a-edit">'+(d.status===ST.RET&&role()==="crew"?"Fix &amp; resubmit":"Edit sheet")+"</button>");
   if(can.hold(d))acts.push('<button class="btn" type="button" id="a-hold">'+(d.hold&&d.hold.on?"Release hold":"Hold")+"</button>");
-  if(can.gf(d))acts.push('<button class="btn danger" type="button" id="a-gfret">Return to field</button><button class="btn primary" type="button" id="a-gfok">Approve for billing</button>');
+  if(can.gf(d))acts.push('<button class="btn danger" type="button" id="a-gfret">Return to field</button><button class="btn primary" type="button" id="a-gfok">GF sign &amp; approve</button>');
   if(can.bill(d))acts.push('<button class="btn danger" type="button" id="a-bret">Return</button><button class="btn primary" type="button" id="a-bok">Approve for invoice</button>');
-  if(can.reopen(d))acts.push('<button class="btn" type="button" id="a-reopen">Reopen billing review</button>');
+  if(can.reopen(d))acts.push('<button class="btn" type="button" id="a-reopen">Send back to GF</button>');
   if(d.status===ST.INV&&d.invoiceId&&role()!=="crew")acts.push('<a class="btn" href="#inv-'+esc(d.invoiceId)+'">Open invoice '+esc(d.invoiceNo||"")+"</a>");
   const ret=d.status===ST.RET&&d.returnNote?'<div class="banner bad"><b>Returned by '+esc(d.returnedBy||"")+":</b> "+esc(d.returnNote)+"</div>":"";
   const hold=d.hold&&d.hold.on?'<div class="banner"><b>On hold — '+esc(d.hold.by)+":</b> "+esc(d.hold.note)+"</div>":"";
@@ -1043,7 +1049,7 @@ function renderSheet(){
     '<section class="details">'+dl("Date",esc(fmtD(d.workDate)))+dl("Crew / lead",esc(d.crew))+dl("AWC",esc(d.awc))+dl("Work order #",esc(d.wo))+dl("FWO #",esc(d.fwo))+dl("Pole set?",esc(d.poleSet==="yes"?"Yes":d.poleSet==="no"?"No":""))+
       dl("Pole # / location",esc(p?p.esPole+" — "+p.street+", "+p.town:(d.poleText?d.poleText+" (not on packet list)":"")),true)+
       (p?dl("Ticket ID",esc(p.ticket))+dl("VZ pole #",esc(p.vzPole))+dl("Pricing area",esc(poleArea(j,p))||'<span class="late">Not set</span>'):"")+
-      dl("Submitted",esc(d.createdBy+" · "+fmtT(d.submittedAt||d.createdAt)))+dl("GF approval",d.gfAt?esc(d.gfBy+" · "+fmtT(d.gfAt)):"")+dl("Billing approval",d.billAt?esc(d.billBy+" · "+fmtT(d.billAt)):"")+dl("Invoice",esc(d.invoiceNo||""))+
+      dl("Submitted",esc(d.createdBy+" · "+fmtT(d.submittedAt||d.createdAt)))+dl("GF signature",d.gfAt?'<span class="sig">✔ Approved by '+esc(d.gfBy)+"</span> · "+esc(fmtT(d.gfAt)):"")+(d.billAt?dl("Billing approval",esc(d.billBy+" · "+fmtT(d.billAt))):"")+dl("Invoice",esc(d.invoiceNo||""))+
       (d.source?dl("Uploaded from",'<button class="btn sm" type="button" id="a-src">'+esc(d.source.name)+"</button> page "+esc(d.source.page)):"")+(d.notes?dl("Notes / extras / difficulty justification",esc(d.notes),true):"")+(d.gfNote?dl("GF note",esc(d.gfNote),true):"")+(d.billNote?dl("Billing note",esc(d.billNote),true):"")+"</section>"+
     '<h2 class="sec">Units</h2>'+sheetLinesHtml(d)+'<h2 class="sec">History</h2>'+histHtml(d);
   const on=(sel,fn)=>{const b=document.getElementById(sel);if(b)b.onclick=fn;};
@@ -1051,12 +1057,12 @@ function renderSheet(){
   on("a-edit",()=>openSheetForm(id));on("a-src",()=>openPackage(d.source,document.getElementById("a-src")));
   on("a-hold",()=>{const h=d.hold&&d.hold.on;confirmBox(h?"Release hold on "+d.no+"?":"Put "+d.no+" on hold?",h?"The sheet continues through approval.":"The sheet stays where it is but is flagged and can't be invoiced until the hold is released.",h?"Release hold":"Hold",async n=>{
     await commitDoc(id,x=>{x.hold=h?{on:false}:{on:true,note:n,by:S.me.name,at:new Date().toISOString()};},h?"Hold released"+(n?": "+n:""):"Put on hold: "+n);},{note:h?"Note":"Reason for hold",noteReq:!h});});
-  on("a-gfok",()=>confirmBox("Approve "+d.no+" for billing?","Confirms the quantities match the verified unit sheet. The sheet goes to billing for final approval.","Approve for billing",async n=>{await commitDoc(id,x=>{guard(ST.SUB)(x);x.status=ST.GF;x.gfBy=S.me.name;x.gfAt=new Date().toISOString();x.gfNote=n||"";x.returnNote="";},"GF approved for billing"+(n?": "+n:""));},{note:"Note to billing"}));
+  on("a-gfok",()=>openGfSign([id]));
   on("a-gfret",()=>confirmBox("Return "+d.no+" to the field?","The crew will see your note and can fix and resubmit the sheet.","Return to field",async n=>{await commitDoc(id,x=>{guard(ST.SUB)(x);x.status=ST.RET;x.returnNote=n;x.returnedBy=S.me.name;},"Returned to field: "+n);},{note:"What needs fixing",noteReq:true,danger:true}));
   on("a-bok",()=>{const pr=priceSheet(d);
     confirmBox("Approve "+d.no+" for invoice?",(pr.errs.length?"Heads up: "+pr.errs.join("; ")+". It can be approved, but it can't go on an invoice until that is fixed. ":"")+(pr.total!=null?"Pole total: "+money(pr.total)+". ":"")+"Approved sheets are ready to put on an invoice.","Approve for invoice",async n=>{await commitDoc(id,x=>{guard(ST.GF)(x);x.status=ST.OK;x.billBy=S.me.name;x.billAt=new Date().toISOString();x.billNote=n||"";},"Billing approved for invoice"+(n?": "+n:""));},{note:"Billing note"});});
   on("a-bret",()=>confirmBox("Return "+d.no+"?","It goes back to the field with your note. The GF will need to approve it again.","Return",async n=>{await commitDoc(id,x=>{guard(ST.GF)(x);x.status=ST.RET;x.returnNote=n;x.returnedBy=S.me.name;x.gfAt="";x.gfBy="";},"Returned by billing: "+n);},{note:"What needs fixing",noteReq:true,danger:true}));
-  on("a-reopen",()=>confirmBox("Reopen "+d.no+"?","It moves back to Awaiting billing so it can be reviewed or returned.","Reopen",async n=>{await commitDoc(id,x=>{guard(ST.OK)(x);x.status=ST.GF;x.billAt="";x.billBy="";},"Reopened for billing review"+(n?": "+n:""));},{note:"Reason"}));
+  on("a-reopen",()=>confirmBox("Send "+d.no+" back to the GF?","The GF signature is removed and the sheet returns to Awaiting GF signature.","Send back",async n=>{await commitDoc(id,x=>{if(!isReady(x))throw new Error("This sheet was already moved by someone else.");x.status=ST.SUB;x.gfAt="";x.gfBy="";x.gfSig=null;x.billAt="";x.billBy="";},"Sent back to the GF: "+n);},{note:"Reason",noteReq:true}));
 }
 
 /* ---------- crew daily unit sheet form (matches the paper checklist) ---------- */
@@ -1134,9 +1140,9 @@ function diffLines(a,b){const A=new Map((a||[]).map(l=>[l.key,l])),B=new Map((b|
 function jobStats(j,ss){
   const mine=ss.filter(s=>s.jobId===j.id);const by=st=>mine.filter(s=>s.status===st).length;
   const locs=j.poles||[];const started=new Set(mine.map(s=>s.poleId).filter(Boolean));
-  const doneLocs=locs.filter(p=>{const sh=mine.filter(s=>s.poleId===p.id);return sh.length&&sh.every(s=>s.status===ST.OK||s.status===ST.INV);}).length;
-  let appr=0,apprOk=true;mine.filter(s=>s.status===ST.OK||s.status===ST.INV).forEach(s=>{const t=priceSheet(s).total;if(t==null)apprOk=false;else appr+=t;});
-  return{locs:locs.length,started:started.size,doneLocs,sub:by(ST.SUB),ret:by(ST.RET),gf:by(ST.GF),ok:by(ST.OK),inv:by(ST.INV),hold:mine.filter(s=>s.hold&&s.hold.on).length,appr,apprOk,sheets:mine.length};}
+  const doneLocs=locs.filter(p=>{const sh=mine.filter(s=>s.poleId===p.id);return sh.length&&sh.every(s=>isReady(s)||s.status===ST.INV);}).length;
+  let appr=0,apprOk=true;mine.filter(s=>isReady(s)||s.status===ST.INV).forEach(s=>{const t=priceSheet(s).total;if(t==null)apprOk=false;else appr+=t;});
+  return{locs:locs.length,started:started.size,doneLocs,sub:by(ST.SUB),ret:by(ST.RET),gf:by(ST.GF),ok:by(ST.OK)+by(ST.GF),inv:by(ST.INV),hold:mine.filter(s=>s.hold&&s.hold.on).length,appr,apprOk,sheets:mine.length};}
 function renderOverview(){
   const ss=visibleSheets();const all=jobs();const showClosed=!!S.showClosed;
   const list=all.filter(j=>showClosed||!j.archived).sort((a,b)=>(a.archived?1:0)-(b.archived?1:0)||a.name.localeCompare(b.name));
@@ -1144,8 +1150,8 @@ function renderOverview(){
   const tq=(k,v,s,st,alert)=>'<button type="button" class="tile tbtn'+(alert?" alert":"")+'" data-st="'+st+'"><span class="k">'+esc(k)+'</span><span class="v">'+esc(v)+'</span><span class="s">'+esc(s)+"</span></button>";
   main.innerHTML=(crew?'<div class="cta"><div><b>Crew daily unit sheets</b><span class="sub">Fill out one sheet per location. Your General Foreman reviews each sheet before it goes to billing.</span></div><button class="btn primary big w-only" type="button" id="cta-new">+ New unit sheet</button></div>':"")+
     '<h2 class="sec">'+(crew?"My unit sheets":"Workflow")+'</h2><section class="tiles">'+
-    tq("Awaiting GF",cnt(ST.SUB),"Crew sheets to review",ST.SUB)+tq("Returned to field",cnt(ST.RET),"Sent back for fixes",ST.RET,cnt(ST.RET)>0)+
-    tq("Awaiting billing",cnt(ST.GF),"GF approved for billing",ST.GF)+tq("Ready to invoice",cnt(ST.OK),"Approved for invoice",ST.OK)+tq("All open sheets",ss.filter(s=>s.status!==ST.INV).length,"Not yet invoiced","open")+"</section>"+
+    tq("Awaiting GF signature",cnt(ST.SUB),"Crew sheets to review",ST.SUB)+tq("Returned to field",cnt(ST.RET),"Sent back for fixes",ST.RET,cnt(ST.RET)>0)+
+    tq("Ready to bill",cnt(ST.OK)+cnt(ST.GF),"Signed by the GF",ST.OK)+tq("All open sheets",ss.filter(s=>s.status!==ST.INV).length,"Not yet invoiced","open")+"</section>"+
     '<div class="row-inline" style="justify-content:space-between;align-items:center"><h2 class="sec" style="margin:6px 0 0">Jobs</h2>'+(all.some(j=>j.archived)?'<label class="sub" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="ov-closed"'+(showClosed?" checked":"")+"> Show closed jobs</label>":"")+"</div>"+
     '<div class="tablebox"><table><thead><tr><th class="nosort">Job</th><th class="nosort">Customer</th><th class="nosort">PO</th><th class="nosort">Locations</th><th class="nosort">Progress</th><th class="nosort">Awaiting GF</th><th class="nosort">Awaiting billing</th><th class="nosort">Ready to invoice</th>'+(can.seePrice()?'<th class="nosort num">Approved $</th>':"")+'<th class="nosort">Status</th></tr></thead><tbody id="ov-jobs"></tbody></table></div>';
   const tb=document.getElementById("ov-jobs");
@@ -1160,26 +1166,65 @@ function renderOverview(){
   const cta=document.getElementById("cta-new");if(cta)cta.onclick=()=>openSheetForm(null);
 }
 
+/* ---------- GF sign-off: tick sheets, sign, and they move to Ready to bill ---------- */
+const canGfSign=()=>W()&&(isAdmin()||role()==="gf");
+function unitsText(d){return(d.lines||[]).map(l=>unitInfo(l.key).item+" × "+fmtN(l.qty)).join(", ");}
+function gfTable(host,list,showJob){
+  const sel=new Set();
+  host.innerHTML=list.length?'<div class="row-inline" style="margin-bottom:8px;align-items:center"><button class="btn sm" type="button" data-all>Select all</button><button class="btn sm" type="button" data-none>Clear</button><span class="sub" data-cnt></span><span style="margin-left:auto"></span><button class="btn primary" type="button" data-sign disabled>GF sign &amp; approve</button></div>'+
+    '<div class="tablebox"><table><thead><tr><th class="nosort" style="width:36px"></th><th class="nosort">Sheet #</th><th class="nosort">Work date</th>'+(showJob?'<th class="nosort">Job</th>':"")+'<th class="nosort">Location</th><th class="nosort">Crew / lead</th><th class="nosort">Units</th>'+(can.seePrice()?'<th class="nosort num">Amount</th>':"")+'<th class="nosort">Notes</th></tr></thead><tbody>'+
+    list.map(s=>{const pr=can.seePrice()?priceSheet(s):null;const held=s.hold&&s.hold.on;const j=jobById(s.jobId);
+      return'<tr data-id="'+esc(s.id)+'"'+(held?' class="removed" title="On hold"':"")+'><td><input type="checkbox" data-s="'+esc(s.id)+'"'+(held?" disabled":"")+' aria-label="Select '+esc(s.no)+'"></td><td class="mono"><a href="#sheet-'+esc(s.id)+'"><b>'+esc(s.no)+"</b></a>"+(held?' <span class="chip c-bad">On hold</span>':"")+"</td><td>"+fmtD(s.workDate)+"</td>"+(showJob?"<td>"+esc(j?j.name:"")+"</td>":"")+'<td class="wrapc">'+esc(sheetPoleText(s))+"</td><td>"+esc(s.crew)+'</td><td class="wrapc">'+esc(unitsText(s))+"</td>"+
+        (pr?'<td class="mono num">'+(pr.total==null?'<span class="sub" title="'+esc(pr.errs.join("; "))+'">Check pricing</span>':money(pr.total))+"</td>":"")+'<td class="wrapc sub">'+esc(s.notes)+"</td></tr>";}).join("")+"</tbody></table></div>"
+    :'<div class="empty"><b>Nothing waiting for the GF</b>New unit sheets show up here to be signed.</div>';
+  if(!list.length)return;
+  const boxes=[...host.querySelectorAll("[data-s]")];const btn=host.querySelector("[data-sign]");
+  const upd=()=>{sel.clear();boxes.forEach(b=>{if(b.checked)sel.add(b.dataset.s);});host.querySelector("[data-cnt]").textContent=sel.size?sel.size+" selected":"";btn.disabled=!sel.size;btn.textContent=sel.size?"GF sign & approve "+sel.size:"GF sign & approve";};
+  boxes.forEach(b=>b.onchange=upd);
+  host.querySelector("[data-all]").onclick=()=>{boxes.forEach(b=>{if(!b.disabled)b.checked=true;});upd();};
+  host.querySelector("[data-none]").onclick=()=>{boxes.forEach(b=>b.checked=false);upd();};
+  btn.onclick=()=>openGfSign([...sel]);
+}
+function openGfSign(ids){
+  if(!canGfSign()){canSave();return;}
+  const list=ids.map(id=>Object.assign({id},S.docs.get(id))).filter(d=>d.type==="sheet"&&d.status===ST.SUB);
+  if(!list.length){toast("Those sheets were already signed or moved.");return;}
+  const tot=can.seePrice()?list.map(priceSheet):[];const known=tot.filter(x=>x.total!=null);const sum=known.reduce((a,x)=>a+x.total,0);
+  const m=modal("GF sign-off",'<p style="margin:0">'+list.length+" unit sheet"+(list.length===1?"":"s")+": "+esc(list.map(d=>d.no).join(", "))+"</p>"+
+    (can.seePrice()&&known.length?'<p class="sub" style="margin:0">Total '+money(sum)+(known.length<list.length?" ("+(list.length-known.length)+" sheet(s) still need pricing fixed)":"")+"</p>":"")+
+    '<label class="sigbox" for="gf-ok"><input type="checkbox" id="gf-ok"><span><b>Signed: '+esc(S.me.name)+'</b><br>I verified the units and quantities on '+(list.length===1?"this sheet":"these sheets")+" against the work completed in the field.</span></label>"+
+    '<p class="sub" style="margin:0">Signing records your name with today\'s date and time and moves '+(list.length===1?"the sheet":"them")+" to Ready to bill.</p>",
+    '<button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="gf-go" disabled>Sign &amp; approve</button>');
+  const ok=m.querySelector("#gf-ok"),go=m.querySelector("#gf-go");ok.onchange=()=>{go.disabled=!ok.checked;};
+  go.onclick=e=>busyRun(e.target,m,async()=>{if(!ok.checked)throw new Error("Tick the signature box first.");if(!canSave())return;
+    const at=new Date().toISOString();let n=0;const fail=[];
+    for(const d of list){const r=await commitDoc(d.id,x=>{if(x.status!==ST.SUB)throw new Error(x.no+" was already moved by someone else.");if(x.hold&&x.hold.on)throw new Error(x.no+" is on hold.");
+        x.status=ST.OK;x.gfBy=S.me.name;x.gfAt=at;x.gfSig={name:S.me.name,user:S.me.username,at};x.returnNote="";},"GF signed & approved — signature: "+S.me.name,true);if(r)n++;else fail.push(d.no);}
+    closeOverlay();refresh();toast(n+" sheet(s) signed and moved to Ready to bill"+(fail.length?". Not signed: "+fail.join(", "):""),7000);},"Signing…");
+}
+
 /* ---------- job page: locations + unit sheets ---------- */
 function renderJob(){
   const j=jobById(S.docId);
   if(!j){main.innerHTML='<a class="back" href="#overview">← Overview</a><div class="empty"><b>Job not found</b></div>';return;}
-  const ss=visibleSheets();const st=jobStats(j,ss);const tab=S.jobTab||"locs";
+  const ss=visibleSheets();const st=jobStats(j,ss);const gfList=ss.filter(s=>s.jobId===j.id&&s.status===ST.SUB).sort((a,b)=>String(a.workDate).localeCompare(String(b.workDate))||String(a.no).localeCompare(String(b.no)));
+  if(!S.jobTab)S.jobTab=canGfSign()&&gfList.length?"gf":"locs";const tab=S.jobTab;
   main.innerHTML='<a class="back" href="#overview">← Overview</a>'+
     '<section class="jobhead"><div><h1>'+esc(j.name)+'</h1><div class="meta">'+(j.archived?'<span class="chip c-stage">Closed</span>':'<span class="chip c-done">Active</span>')+"<span>"+esc(j.customer)+"</span>"+(j.po?"<span>PO "+esc(j.po)+"</span>":"")+(j.wo?"<span>WO / Job # "+esc(j.wo)+"</span>":"")+(j.town?"<span>"+esc(j.town)+"</span>":"")+(j.gf?"<span>GF "+esc(j.gf)+"</span>":"")+(j.estStart||j.estFinish?"<span>Est. "+esc(fmtD(j.estStart)||"?")+" – "+esc(fmtD(j.estFinish)||"?")+"</span>":"")+'</div></div><div class="acts">'+
       (can.newSheet()&&!j.archived?'<button class="btn primary" type="button" id="jb-sheet">+ New unit sheet</button>':"")+
       (can.newSheet()&&!j.archived?'<button class="btn" type="button" id="jb-upl">Upload Unit Sheets</button>':"")+'<button class="btn" type="button" id="jb-print"'+((j.poles||[]).length?"":" disabled")+'>Print Unit Sheets</button>'+(can.setup()?'<button class="btn" type="button" id="jb-add">+ Add locations</button><button class="btn" type="button" id="jb-edit">Edit job</button>':"")+(role()!=="crew"?'<button class="btn" type="button" id="jb-csv">Export CSV</button>':"")+"</div></section>"+
     (!j.area&&(j.poles||[]).some(p=>!p.area)&&role()!=="crew"?'<div class="banner">No default pricing area is set for this job, so locations without their own area can\'t be priced. Set it with <b>Edit job</b>.</div>':"")+
     (role()!=="crew"&&((j.packages||[]).length||can.setup())?'<div class="pkgbar"><b>Job package</b>'+(j.packages||[]).map((pk,i)=>'<button class="btn sm" type="button" data-pk="'+i+'" title="Uploaded '+esc(fmtT(pk.at))+" by "+esc(pk.by)+'">'+esc(pk.name)+' <span class="sub">'+fmtSize(pk.size)+"</span></button>").join("")+((j.packages||[]).length?"":'<span class="sub">None uploaded</span>')+(can.setup()?'<button class="btn sm primary" type="button" id="jb-pkg">Upload package</button>':"")+"</div>":"")+
-    '<section class="tiles">'+tile("Locations",st.locs,st.started+" started",false)+tile("Awaiting GF",st.sub,"Crew sheets",false)+tile("Awaiting billing",st.gf,"GF approved",false)+tile("Ready to invoice",st.ok,"Approved for invoice",false)+tile("Invoiced",st.inv,"Sheets on invoices",false)+(can.seePrice()?tile("Approved $",st.ok+st.inv?(st.apprOk?money(st.appr):"Check"):"$0.00","Ready + invoiced",false):"")+"</section>"+
-    '<div class="subtabs" role="tablist"><button role="tab" type="button" id="t-locs" aria-selected="'+(tab==="locs")+'">Locations</button><button role="tab" type="button" id="t-sheets" aria-selected="'+(tab==="sheets")+'">Unit sheets ('+ss.filter(s=>s.jobId===j.id).length+')</button></div><div id="jbody"></div>';
-  document.getElementById("t-locs").onclick=()=>{S.jobTab="locs";renderJob();};document.getElementById("t-sheets").onclick=()=>{S.jobTab="sheets";renderJob();};
+    '<section class="tiles">'+tile("Locations",st.locs,st.started+" started",false)+tile("Awaiting GF signature",st.sub,"Crew sheets",st.sub>0)+tile("Ready to bill",st.ok,"Signed by the GF",false)+tile("Invoiced",st.inv,"Sheets on invoices",false)+(can.seePrice()?tile("Approved $",st.ok+st.inv?(st.apprOk?money(st.appr):"Check"):"$0.00","Ready + invoiced",false):"")+"</section>"+
+    '<div class="subtabs" role="tablist"><button role="tab" type="button" id="t-locs" aria-selected="'+(tab==="locs")+'">Locations</button><button role="tab" type="button" id="t-sheets" aria-selected="'+(tab==="sheets")+'">Unit sheets ('+ss.filter(s=>s.jobId===j.id).length+')</button>'+(canGfSign()?'<button role="tab" type="button" id="t-gf" aria-selected="'+(tab==="gf")+'">GF sign-off ('+gfList.length+")</button>":"")+'</div><div id="jbody"></div>';
+  document.getElementById("t-locs").onclick=()=>{S.jobTab="locs";renderJob();};document.getElementById("t-sheets").onclick=()=>{S.jobTab="sheets";renderJob();};const tg=document.getElementById("t-gf");if(tg)tg.onclick=()=>{S.jobTab="gf";renderJob();};
   const on=(i,fn)=>{const b=document.getElementById(i);if(b)b.onclick=fn;};
   on("jb-sheet",()=>openSheetForm(null,j.id));on("jb-pkg",()=>openAddLocations(j.id,true));main.querySelectorAll("[data-pk]").forEach(b=>b.onclick=()=>openPackage(j.packages[+b.dataset.pk],b));on("jb-print",()=>openPrintPicker(j.id));on("jb-upl",()=>openSheetUpload(j.id));on("jb-add",()=>openAddLocations(j.id));on("jb-edit",()=>{location.hash="jobedit-"+j.id;});
   on("jb-csv",()=>{const sx=sheets();const head=["#","Ticket ID","Town","Street","ES Pole #","VZ Pole #","PDF Page","WO / Job #","Pricing Area","Date Set","Status","Sheets","Notes"];
     const lines=[head].concat((j.poles||[]).map(p=>{const sh=sx.filter(s=>s.jobId===j.id&&s.poleId===p.id);return[p.n,p.ticket,p.town,p.street,p.esPole,p.vzPole,p.pdfPage,p.woJob||j.wo,poleArea(j,p),p.dateSet,poleStatus(sh)[0],sh.map(s=>s.no).join(" "),p.notes];}));
     download(new Blob(["﻿"+lines.map(r=>r.map(v=>'"'+String(v==null?"":v).replace(/"/g,'""')+'"').join(",")).join("\r\n")],{type:"text/csv"}),"Locations - "+j.name+".csv");});
   const box=document.getElementById("jbody");
+  if(tab==="gf"){if(!canGfSign())box.innerHTML='<p class="sub">Only a General Foreman or admin can sign.</p>';else gfTable(box,gfList,false);return;}
   if(tab==="sheets"){
     const rows=ss.filter(s=>s.jobId===j.id).sort((a,b)=>ST_ORDER.indexOf(a.status)-ST_ORDER.indexOf(b.status)||String(b.workDate).localeCompare(String(a.workDate)));
     box.innerHTML='<div class="tablebox"><table><thead><tr><th class="nosort">Sheet #</th><th class="nosort">Work date</th><th class="nosort">Location</th><th class="nosort">Crew / lead</th><th class="nosort">Units</th>'+(can.seePrice()?'<th class="nosort num">Amount</th>':"")+'<th class="nosort">Status</th></tr></thead><tbody id="jb-sh"></tbody></table></div>';
@@ -1187,12 +1232,12 @@ function renderJob(){
     tb.innerHTML=rows.map(s=>{const pr=can.seePrice()?priceSheet(s):null;return'<tr tabindex="0" data-id="'+esc(s.id)+'"><td class="mono"><b>'+esc(s.no)+"</b></td><td>"+fmtD(s.workDate)+'</td><td class="wrapc">'+esc(sheetPoleText(s))+"</td><td>"+esc(s.crew)+'</td><td class="mono">'+(s.lines||[]).length+"</td>"+(pr?'<td class="mono num">'+(pr.total==null?'<span class="sub">Check pricing</span>':money(pr.total))+"</td>":"")+"<td>"+stChip(s)+"</td></tr>";}).join("")||'<tr><td colspan="7"><div class="empty"><b>No unit sheets yet</b>Crews submit one sheet per location.</div></td></tr>';
     bindRows(tb,id=>location.hash="sheet-"+id);return;}
   const q=S.pf.q||"",stf=S.pf.st||"";
-  box.innerHTML='<div class="filters" style="margin-bottom:10px"><input type="search" id="pl-q" placeholder="Search street, pole #, ticket…" aria-label="Search locations" value="'+esc(q)+'"><select id="pl-st" aria-label="Status"><option value="">All statuses</option>'+["Not started","Awaiting GF","Returned to field","Awaiting billing","Ready to invoice","Invoiced"].map(s=>"<option"+(s===stf?" selected":"")+">"+s+"</option>").join("")+'</select><span class="count" id="pl-count"></span></div>'+
+  box.innerHTML='<div class="filters" style="margin-bottom:10px"><input type="search" id="pl-q" placeholder="Search street, pole #, ticket…" aria-label="Search locations" value="'+esc(q)+'"><select id="pl-st" aria-label="Status"><option value="">All statuses</option>'+["Not started","Awaiting GF signature","Returned to field","Ready to bill","Invoiced"].map(s=>"<option"+(s===stf?" selected":"")+">"+s+"</option>").join("")+'</select><span class="count" id="pl-count"></span></div>'+
     '<div class="tablebox"><table><thead><tr><th class="nosort">#</th><th class="nosort">Ticket ID</th><th class="nosort">Town</th><th class="nosort">Street</th><th class="nosort">ES pole #</th><th class="nosort">VZ pole #</th><th class="nosort">PDF page</th><th class="nosort">Pricing area</th><th class="nosort">Sheets</th>'+(can.seePrice()?'<th class="nosort num">Approved $</th>':"")+'<th class="nosort">Status</th><th class="nosort">Notes</th><th class="nosort"></th></tr></thead><tbody id="pl-body"></tbody></table></div>';
   const qi=document.getElementById("pl-q"),si=document.getElementById("pl-st");qi.oninput=()=>{S.pf.q=qi.value;fill();};si.onchange=()=>{S.pf.st=si.value;fill();};
   function fill(){const tb=document.getElementById("pl-body");const qq=(S.pf.q||"").trim().toLowerCase();const sx=sheets();
     const rows=(j.poles||[]).map(p=>{const sh=sx.filter(s=>s.jobId===j.id&&s.poleId===p.id);const stt=poleStatus(sh);
-      const appr=sh.filter(s=>s.status===ST.OK||s.status===ST.INV).map(priceSheet);const amt=appr.some(x=>x.total==null)?null:appr.reduce((a,x)=>a+x.total,0);return{p,sh,stt,amt,napp:appr.length};})
+      const appr=sh.filter(s=>isReady(s)||s.status===ST.INV).map(priceSheet);const amt=appr.some(x=>x.total==null)?null:appr.reduce((a,x)=>a+x.total,0);return{p,sh,stt,amt,napp:appr.length};})
       .filter(r=>(!qq||[r.p.street,r.p.esPole,r.p.vzPole,r.p.ticket,r.p.town,r.p.notes].join(" ").toLowerCase().indexOf(qq)>=0)&&(!S.pf.st||r.stt[0]===S.pf.st));
     document.getElementById("pl-count").textContent=rows.length+" of "+(j.poles||[]).length+" locations";
     tb.innerHTML=rows.map(r=>{const p=r.p;const ar=poleArea(j,p);return'<tr tabindex="0" data-id="'+esc(p.id)+'"><td class="mono">'+esc(p.n)+'</td><td class="mono">'+esc(p.ticket)+"</td><td>"+esc(p.town)+"</td><td><b>"+esc(p.street)+'</b></td><td class="mono">'+esc(p.esPole)+'</td><td class="mono">'+esc(p.vzPole)+'</td><td class="mono">'+esc(p.pdfPage)+"</td><td>"+(ar?esc(ar)+(p.area?"":' <span class="sub">(job default)</span>'):'<span class="late">Not set</span>')+'</td><td class="mono">'+r.sh.length+"</td>"+
@@ -1527,9 +1572,8 @@ function poleStatus(sh){
   const open=sh.filter(s=>s.status!==ST.INV);
   if(!open.length)return["Invoiced","c-stage"];
   if(open.some(s=>s.status===ST.RET))return["Returned to field","c-bad"];
-  if(open.some(s=>s.status===ST.SUB))return["Awaiting GF","c-sch"];
-  if(open.some(s=>s.status===ST.GF))return["Awaiting billing","c-req"];
-  return["Ready to invoice","c-done"];}
+  if(open.some(s=>s.status===ST.SUB))return["Awaiting GF signature","c-sch"];
+  return["Ready to bill","c-done"];}
 function openPoleForm(jid,pid){
   const j=jobById(jid);const p=poleById(j,pid);if(!p)return;
   const ro=!can.setup();const ss=sheets().filter(s=>s.jobId===jid&&s.poleId===pid);
@@ -1584,7 +1628,7 @@ function openTemplateUpload(){
 /* ---------- invoices ---------- */
 function renderInvoices(){
   const all=invoices().sort((a,b)=>(a.status==="Draft"?0:1)-(b.status==="Draft"?0:1)||String(b.date).localeCompare(String(a.date))||String(b.no).localeCompare(String(a.no)));
-  const ready=sheets().filter(s=>s.status===ST.OK);const jobIds=[...new Set(ready.map(s=>s.jobId))];
+  const ready=sheets().filter(isReady);const jobIds=[...new Set(ready.map(s=>s.jobId))];
   main.innerHTML='<section class="jobhead"><div><h1>Invoices</h1><div class="meta">'+ready.length+" unit sheet"+(ready.length===1?"":"s")+" approved for invoice across "+jobIds.length+" job"+(jobIds.length===1?"":"s")+"</div></div></section>"+
     '<h2 class="sec">Ready to bill</h2><div class="tablebox"><table><thead><tr><th class="nosort">Job</th><th class="nosort">Customer</th><th class="nosort">Sheets</th><th class="nosort">Locations</th><th class="nosort">Work dates</th><th class="nosort num">Amount</th><th class="nosort">Check</th><th class="nosort"></th></tr></thead><tbody id="rb"></tbody></table></div>'+
     '<h2 class="sec">Invoices</h2><div class="tablebox"><table><thead><tr><th class="nosort">Invoice #</th><th class="nosort">Date</th><th class="nosort">Job</th><th class="nosort">Customer</th><th class="nosort">Locations</th><th class="nosort num">Total</th><th class="nosort">Status</th></tr></thead><tbody id="it"></tbody></table></div>';
@@ -1619,7 +1663,7 @@ function buildInvoice(sel){
   return{poles,errs:[...new Set(errs)],total:cents(poles.reduce((a,p)=>a+p.total,0)),period:dates.length?fmtD(dates[0])+(dates[dates.length-1]!==dates[0]?" – "+fmtD(dates[dates.length-1]):""):""};}
 function openInvoiceForm(presetJob){
   if(!can.invoice()){canSave();return;}
-  const ready=sheets().filter(s=>s.status===ST.OK);
+  const ready=sheets().filter(isReady);
   const jobIds=[...new Set(ready.map(s=>s.jobId))];
   if(!ready.length){toast("No sheets are approved for invoice yet.",5000);return;}
   const m=modal("Build invoice",'<fieldset style="grid-template-columns:1fr 1fr 1fr"><label class="f wide" for="if-job">Job<select id="if-job">'+jobIds.map(id=>{const j=jobById(id);return'<option value="'+esc(id)+'">'+esc(j?j.name:"(job removed)")+" ("+ready.filter(s=>s.jobId===id).length+" sheets)</option>";}).join("")+"</select></label>"+
@@ -1649,12 +1693,13 @@ function openInvoiceForm(presetJob){
     const sel=ready.filter(s=>chosen.has(s.id));if(!sel.length)throw new Error("Select at least one sheet.");
     const b=buildInvoice(sel);if(b.errs.length)throw new Error("Fix the items listed first.");
     const j=jobById(jobSel.value);const r=rates();
+    b.poles.forEach(p=>{p.billBy=S.me.name;p.billDate=fmtD(date);});
     const doc={no,date,jobId:j.id,jobName:j.name,customer:j.customer||(r&&r.customer)||"",terms:(r&&r.terms)||"",po:m.querySelector("#if-po").value.trim(),period:m.querySelector("#if-per").value.trim(),pkg:m.querySelector("#if-pkg").value.trim(),
       sheetIds:sel.map(s=>s.id),poles:b.poles,total:b.total,status:"Draft",template:S.index.template?S.index.template.name:"",from:(r&&r.from)||[]};
     const iid=await createDoc("invoice",doc,"Invoice built: "+b.poles.length+" pole(s) from "+sel.length+" sheet(s) · total "+money(b.total));
     if(!iid)return;
     const failed=[];
-    for(const s of sel){const ok=await commitDoc(s.id,x=>{if(x.status!==ST.OK)throw new Error(x.no+" is no longer approved for invoice.");x.status=ST.INV;x.invoiceId=iid;x.invoiceNo=no;},"Added to invoice "+no,true);if(!ok)failed.push(s.no);}
+    for(const s of sel){const ok=await commitDoc(s.id,x=>{if(!isReady(x))throw new Error(x.no+" is no longer ready to bill.");x.status=ST.INV;x.invoiceId=iid;x.invoiceNo=no;},"Added to invoice "+no,true);if(!ok)failed.push(s.no);}
     closeOverlay();location.hash="inv-"+iid;
     if(failed.length)toast("Invoice created, but these sheets could not be marked invoiced: "+failed.join(", ")+". Check them.",12000);else toast("Invoice "+no+" created");
   });
