@@ -68,7 +68,7 @@ async function ocrWorker(progress){if(!tess){await loadScript(TESS);progress&&pr
 function tessWords(data){
   if(data.words&&data.words.length)return data.words;
   const out=[];(data.blocks||[]).forEach(b=>(b.paragraphs||[]).forEach(p=>(p.lines||[]).forEach(l=>(l.words||[]).forEach(w=>out.push(w)))));return out;}
-async function read(file,progress){
+async function pagesOf(file,progress){
   const lib=await getPdfjs();const doc=await lib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;const pages=[];let scanned=false;
   for(let n=1;n<=doc.numPages;n++){progress&&progress("Reading page "+n+" of "+doc.numPages+"…");
     const page=await doc.getPage(n);const vp=page.getViewport({scale:1});const tc=await page.getTextContent();
@@ -85,7 +85,67 @@ async function read(file,progress){
       const {data}=await w.recognize(c,{},{blocks:true,text:true});
       pages.push({width:c.width,words:tessWords(data).map(x=>({t:x.text,x0:x.bbox.x0,y0:x.bbox.y0,x1:x.bbox.x1,y1:x.bbox.y1,conf:x.confidence}))});}
   }
-  const out=parse(pages);out.scanned=scanned;out.pages=doc.numPages;return out;}
-return{parse,read,lines,findHeader};
+  return{pages,scanned,numPages:doc.numPages};}
+async function read(file,progress){const r=await pagesOf(file,progress);const out=parse(r.pages);out.scanned=r.scanned;out.pages=r.numPages;return out;}
+async function readUnitSheets(file,sections,progress){const r=await pagesOf(file,progress);const out=parseUnitSheets(r.pages,sections);out.scanned=r.scanned;return out;}
+
+/* ---- filled Crew Daily Unit Checklist pages -> sheet entries ---- */
+const nm=s=>String(s||"").toLowerCase().replace(/&/g," and ").replace(/[^a-z0-9.]+/g," ").replace(/\s+/g," ").trim();
+const NUM=/^\d+(\.\d+)?$/;
+function valuesBelow(ls,li,anchors,tol){
+  /* anchors: [{key,x}] from a label line; value = words on the next line(s) before the next label line */
+  const out={};anchors.forEach(a=>out[a.key]="");const cols=anchors.slice().sort((a,b)=>a.x-b.x);
+  for(let k=li+1;k<ls.length&&k<=li+2;k++){const L=ls[k];const txt=nm(L.words.map(w=>w.t).join(" "));
+    if(/ticket id|vz pole|pole set|pole top configuration|location|work order/.test(txt)&&k>li+1)break;
+    if(k>li+1&&Object.values(out).some(Boolean))break;
+    L.words.forEach(w=>{let col=null;for(const c of cols){if(w.x0>=c.x-tol)col=c;}if(col)out[col.key]=(out[col.key]?out[col.key]+" ":"")+clean(w.t);});}
+  return out;}
+function parseUnitSheets(pages,sections){
+  const res=[];
+  const secIdx=new Map(sections.map(s=>[nm(s[0]),s]));
+  pages.forEach((pg,pi)=>{
+    const ls=lines(pg.words,0.5);const tol=pg.width*0.01;const mid=pg.width/2;
+    const txt=L=>L.words.map(w=>clean(w.t)).join(" ");
+    const all=nm(ls.map(txt).join(" "));
+    if(!/unit checklist/.test(all)||!/pole top configuration/.test(all))return;
+    const e={page:pi+1,date:"",crew:"",wo:"",fwo:"",awc:"",poleSet:"",pole:"",ticket:"",vz:"",locNo:"",qty:{},others:[],notes:"",warn:[]};
+    const findLine=re=>ls.findIndex(L=>re.test(nm(txt(L))));
+    const anchorOf=(L,label)=>{const ws=L.words;for(let k=0;k<ws.length;k++){for(let n=1;n<=5&&k+n<=ws.length;n++){const seq=nm(ws.slice(k,k+n).map(w=>w.t).join(" "));if(seq===label)return ws[k].x0;if(label.indexOf(seq)!==0)break;}}return null;};
+    const aw=ls.findIndex(L=>/^awc\b/.test(nm(txt(L))));if(aw>=0){const L=ls[aw];const k=L.words.findIndex(w=>/^awc$/i.test(clean(w.t)));const left=w=>w.x1<pg.width*0.62;
+      e.awc=L.words.slice(k+1).filter(left).map(w=>clean(w.t)).join(" ").replace(/^_+|_+$/g,"").trim();
+      const nx=ls[aw+1];if(!e.awc&&nx&&!/\bdate\b/.test(nm(txt(nx))))e.awc=nx.words.filter(left).map(w=>clean(w.t)).join(" ").trim();}
+    const l1=findLine(/\bdate\b.*crew.*lead.*work order/);
+    if(l1>=0){const L=ls[l1];const an=[["date","date"],["crew","crew lead"],["wo","work order"],["fwo","fwo"]].map(([k,lab])=>({key:k,x:anchorOf(L,lab)})).filter(a=>a.x!=null);Object.assign(e,valuesBelow(ls,l1,an,tol));}
+    const l2=findLine(/pole location.*pole set/);
+    if(l2>=0){const L=ls[l2];const an=[["pole","pole location"],["poleSet","pole set"]].map(([k,lab])=>({key:k,x:anchorOf(L,lab)})).filter(a=>a.x!=null);const v=valuesBelow(ls,l2,an,tol);e.pole=v.pole||"";
+      const psx=(an.find(a=>a.key==="poleSet")||{}).x;const vl=ls[l2+1];
+      if(psx!=null&&vl){const ps=vl.words.filter(w=>w.x0>=psx-tol).map(w=>String(w.t)).join("").toUpperCase().replace(/\s+/g,"");
+        e.poleSet=/[X✓✔☒]\]?YES/.test(ps)?"yes":/[X✓✔☒]\]?NO/.test(ps)?"no":"";}}
+    const l3=findLine(/ticket id.*vz pole/);
+    if(l3>=0){const L=ls[l3];const an=[["ticket","ticket id"],["vz","vz pole"],["locNo","location"],["pdf","pdf page"]].map(([k,lab])=>({key:k,x:anchorOf(L,lab)})).filter(a=>a.x!=null);const v=valuesBelow(ls,l3,an,tol);e.ticket=(v.ticket||"").replace(/\s/g,"").toUpperCase();e.vz=v.vz||"";e.locNo=v.locNo||"";}
+    /* unit rows: two columns, each with a section context and a QTY column position */
+    const ctx={L:null,R:null},qx={L:null,R:null};let notesAt=-1;
+    for(let k=Math.max(l3,0)+1;k<ls.length;k++){const Lw=ls[k];const t=nm(txt(Lw));
+      if(/^notes extras/.test(t)){notesAt=k;break;}
+      ["L","R"].forEach(side=>{const ws=Lw.words.filter(w=>side==="L"?w.x0<mid:w.x0>=mid);if(!ws.length)return;
+        const st=nm(ws.map(w=>w.t).join(" "));
+        if(/ qty$/.test(st)||st==="qty"){const head=st.replace(/ ?qty$/,"");ctx[side]=head==="other units"?"OTHER":(secIdx.get(head)||null);const q=ws.find(w=>/^qty$/i.test(clean(w.t)));qx[side]=q?q.x0:null;
+          if(head&&!ctx[side])e.warn.push("Page "+(pi+1)+': unknown section "'+head+'"');return;}
+        if(!ctx[side]||qx[side]==null)return;
+        const lab=ws.filter(w=>w.x1<qx[side]-tol).map(w=>clean(w.t)).join(" ").trim();
+        const qws=ws.filter(w=>w.x0>=qx[side]-tol*3).map(w=>clean(w.t)).join("");
+        if(!qws)return;
+        const q=qws.replace(/[^0-9.]/g,"");
+        if(!NUM.test(q)){e.warn.push("Page "+(pi+1)+': quantity "'+qws+'" next to "'+(lab||"?")+'" is not a number');return;}
+        if(ctx[side]==="OTHER"){if(lab)e.others.push({text:lab,qty:Number(q)});else e.warn.push("Page "+(pi+1)+": an Other units quantity has no unit written next to it");return;}
+        const it=ctx[side][1].find(x=>nm(x[1])===nm(lab))||ctx[side][1].find(x=>nm(lab).indexOf(nm(x[1]))===0);
+        if(!it){e.warn.push("Page "+(pi+1)+': couldn\'t match "'+lab+'" in '+ctx[side][0]);return;}
+        e.qty[it[0]]=(e.qty[it[0]]||0)+Number(q);});}
+    if(notesAt>=0){const raw=L=>L.words.map(w=>String(w.t).trim()).join(" ");const parts=[];const first=raw(ls[notesAt]).replace(/^.*JUSTIFICATION:?/i,"").trim();if(first)parts.push(first);
+      for(let k=notesAt+1;k<ls.length;k++){const t=txt(ls[k]);if(/P&G Power Co\.?\s*·?.*Location \d+ of \d+/i.test(t)||/^P&G Power Co/i.test(t))break;if(/^Packet note:/i.test(t))continue;parts.push(raw(ls[k]));}
+      e.notes=parts.join(" ").trim();}
+    res.push(e);});
+  return{sheets:res};}
+return{parse,read,readUnitSheets,parseUnitSheets,lines,findHeader};
 })();
 if(typeof module!=="undefined")module.exports=PKG;

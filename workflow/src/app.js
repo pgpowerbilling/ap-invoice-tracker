@@ -417,11 +417,11 @@ function renderSheet(){
       dl("Pole # / location",esc(p?p.esPole+" — "+p.street+", "+p.town:(d.poleText?d.poleText+" (not on packet list)":"")),true)+
       (p?dl("Ticket ID",esc(p.ticket))+dl("VZ pole #",esc(p.vzPole))+dl("Pricing area",esc(poleArea(j,p))||'<span class="late">Not set</span>'):"")+
       dl("Submitted",esc(d.createdBy+" · "+fmtT(d.submittedAt||d.createdAt)))+dl("GF approval",d.gfAt?esc(d.gfBy+" · "+fmtT(d.gfAt)):"")+dl("Billing approval",d.billAt?esc(d.billBy+" · "+fmtT(d.billAt)):"")+dl("Invoice",esc(d.invoiceNo||""))+
-      (d.notes?dl("Notes / extras / difficulty justification",esc(d.notes),true):"")+(d.gfNote?dl("GF note",esc(d.gfNote),true):"")+(d.billNote?dl("Billing note",esc(d.billNote),true):"")+"</section>"+
+      (d.source?dl("Uploaded from",'<button class="btn sm" type="button" id="a-src">'+esc(d.source.name)+"</button> page "+esc(d.source.page)):"")+(d.notes?dl("Notes / extras / difficulty justification",esc(d.notes),true):"")+(d.gfNote?dl("GF note",esc(d.gfNote),true):"")+(d.billNote?dl("Billing note",esc(d.billNote),true):"")+"</section>"+
     '<h2 class="sec">Units</h2>'+sheetLinesHtml(d)+'<h2 class="sec">History</h2>'+histHtml(d);
   const on=(sel,fn)=>{const b=document.getElementById(sel);if(b)b.onclick=fn;};
   const guard=want=>x=>{if(x.status!==want)throw new Error("This sheet was already moved to "+(ST_LABEL[x.status]||x.status)+" by someone else.");};
-  on("a-edit",()=>openSheetForm(id));
+  on("a-edit",()=>openSheetForm(id));on("a-src",()=>openPackage(d.source,document.getElementById("a-src")));
   on("a-hold",()=>{const h=d.hold&&d.hold.on;confirmBox(h?"Release hold on "+d.no+"?":"Put "+d.no+" on hold?",h?"The sheet continues through approval.":"The sheet stays where it is but is flagged and can't be invoiced until the hold is released.",h?"Release hold":"Hold",async n=>{
     await commitDoc(id,x=>{x.hold=h?{on:false}:{on:true,note:n,by:S.me.name,at:new Date().toISOString()};},h?"Hold released"+(n?": "+n:""):"Put on hold: "+n);},{note:h?"Note":"Reason for hold",noteReq:!h});});
   on("a-gfok",()=>confirmBox("Approve "+d.no+" for billing?","Confirms the quantities match the verified unit sheet. The sheet goes to billing for final approval.","Approve for billing",async n=>{await commitDoc(id,x=>{guard(ST.SUB)(x);x.status=ST.GF;x.gfBy=S.me.name;x.gfAt=new Date().toISOString();x.gfNote=n||"";x.returnNote="";},"GF approved for billing"+(n?": "+n:""));},{note:"Note to billing"}));
@@ -541,14 +541,14 @@ function renderJob(){
   main.innerHTML='<a class="back" href="#overview">← Overview</a>'+
     '<section class="jobhead"><div><h1>'+esc(j.name)+'</h1><div class="meta">'+(j.archived?'<span class="chip c-stage">Closed</span>':'<span class="chip c-done">Active</span>')+"<span>"+esc(j.customer)+"</span>"+(j.po?"<span>PO "+esc(j.po)+"</span>":"")+(j.wo?"<span>WO / Job # "+esc(j.wo)+"</span>":"")+(j.town?"<span>"+esc(j.town)+"</span>":"")+(j.gf?"<span>GF "+esc(j.gf)+"</span>":"")+(j.estStart||j.estFinish?"<span>Est. "+esc(fmtD(j.estStart)||"?")+" – "+esc(fmtD(j.estFinish)||"?")+"</span>":"")+'</div></div><div class="acts">'+
       (can.newSheet()&&!j.archived?'<button class="btn primary" type="button" id="jb-sheet">+ New unit sheet</button>':"")+
-      '<button class="btn" type="button" id="jb-print"'+((j.poles||[]).length?"":" disabled")+'>Print Unit Sheets</button>'+(can.setup()?'<button class="btn" type="button" id="jb-add">+ Add locations</button><button class="btn" type="button" id="jb-edit">Edit job</button>':"")+(role()!=="crew"?'<button class="btn" type="button" id="jb-csv">Export CSV</button>':"")+"</div></section>"+
+      (can.newSheet()&&!j.archived?'<button class="btn" type="button" id="jb-upl">Upload Unit Sheets</button>':"")+'<button class="btn" type="button" id="jb-print"'+((j.poles||[]).length?"":" disabled")+'>Print Unit Sheets</button>'+(can.setup()?'<button class="btn" type="button" id="jb-add">+ Add locations</button><button class="btn" type="button" id="jb-edit">Edit job</button>':"")+(role()!=="crew"?'<button class="btn" type="button" id="jb-csv">Export CSV</button>':"")+"</div></section>"+
     (!j.area&&(j.poles||[]).some(p=>!p.area)&&role()!=="crew"?'<div class="banner">No default pricing area is set for this job, so locations without their own area can\'t be priced. Set it with <b>Edit job</b>.</div>':"")+
     (role()!=="crew"&&((j.packages||[]).length||can.setup())?'<div class="pkgbar"><b>Job package</b>'+(j.packages||[]).map((pk,i)=>'<button class="btn sm" type="button" data-pk="'+i+'" title="Uploaded '+esc(fmtT(pk.at))+" by "+esc(pk.by)+'">'+esc(pk.name)+' <span class="sub">'+fmtSize(pk.size)+"</span></button>").join("")+((j.packages||[]).length?"":'<span class="sub">None uploaded</span>')+(can.setup()?'<button class="btn sm primary" type="button" id="jb-pkg">Upload package</button>':"")+"</div>":"")+
     '<section class="tiles">'+tile("Locations",st.locs,st.started+" started",false)+tile("Awaiting GF",st.sub,"Crew sheets",false)+tile("Awaiting billing",st.gf,"GF approved",false)+tile("Ready to invoice",st.ok,"Approved for invoice",false)+tile("Invoiced",st.inv,"Sheets on invoices",false)+(can.seePrice()?tile("Approved $",st.ok+st.inv?(st.apprOk?money(st.appr):"Check"):"$0.00","Ready + invoiced",false):"")+"</section>"+
     '<div class="subtabs" role="tablist"><button role="tab" type="button" id="t-locs" aria-selected="'+(tab==="locs")+'">Locations</button><button role="tab" type="button" id="t-sheets" aria-selected="'+(tab==="sheets")+'">Unit sheets ('+ss.filter(s=>s.jobId===j.id).length+')</button></div><div id="jbody"></div>';
   document.getElementById("t-locs").onclick=()=>{S.jobTab="locs";renderJob();};document.getElementById("t-sheets").onclick=()=>{S.jobTab="sheets";renderJob();};
   const on=(i,fn)=>{const b=document.getElementById(i);if(b)b.onclick=fn;};
-  on("jb-sheet",()=>openSheetForm(null,j.id));on("jb-pkg",()=>openAddLocations(j.id,true));main.querySelectorAll("[data-pk]").forEach(b=>b.onclick=()=>openPackage(j.packages[+b.dataset.pk],b));on("jb-print",()=>openPrintPicker(j.id));on("jb-add",()=>openAddLocations(j.id));on("jb-edit",()=>{location.hash="jobedit-"+j.id;});
+  on("jb-sheet",()=>openSheetForm(null,j.id));on("jb-pkg",()=>openAddLocations(j.id,true));main.querySelectorAll("[data-pk]").forEach(b=>b.onclick=()=>openPackage(j.packages[+b.dataset.pk],b));on("jb-print",()=>openPrintPicker(j.id));on("jb-upl",()=>openSheetUpload(j.id));on("jb-add",()=>openAddLocations(j.id));on("jb-edit",()=>{location.hash="jobedit-"+j.id;});
   on("jb-csv",()=>{const sx=sheets();const head=["#","Ticket ID","Town","Street","ES Pole #","VZ Pole #","PDF Page","WO / Job #","Pricing Area","Date Set","Status","Sheets","Notes"];
     const lines=[head].concat((j.poles||[]).map(p=>{const sh=sx.filter(s=>s.jobId===j.id&&s.poleId===p.id);return[p.n,p.ticket,p.town,p.street,p.esPole,p.vzPole,p.pdfPage,p.woJob||j.wo,poleArea(j,p),p.dateSet,poleStatus(sh)[0],sh.map(s=>s.no).join(" "),p.notes];}));
     download(new Blob(["﻿"+lines.map(r=>r.map(v=>'"'+String(v==null?"":v).replace(/"/g,'""')+'"').join(",")).join("\r\n")],{type:"text/csv"}),"Locations - "+j.name+".csv");});
@@ -612,6 +612,74 @@ function openPrintPicker(jid){
   m.querySelector("#pp-q").oninput=e=>{const q=e.target.value.trim().toLowerCase();boxes.forEach(b=>{const l=b.closest("label");l.hidden=!!q&&l.dataset.hay.indexOf(q)<0;});};
   upd();
   go.onclick=()=>{const ids=new Set(boxes.filter(b=>b.checked).map(b=>b.dataset.p));const sel=ps.filter(p=>ids.has(p.id));closeOverlay();printUnitSheets(j,sel);};
+}
+
+
+/* ---------- upload filled unit sheets (PDF of the printed checklist) ---------- */
+function parseSheetDate(s){s=String(s||"").trim();let m=/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/.exec(s);
+  if(m){let y=+m[3];if(y<100)y+=2000;const mo=+m[1],d=+m[2];if(mo>=1&&mo<=12&&d>=1&&d<=31)return y+"-"+String(mo).padStart(2,"0")+"-"+String(d).padStart(2,"0");}
+  m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s);return m?s:"";}
+function matchOtherUnit(text){const n=x=>String(x||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();const t=n(text);if(!t)return null;
+  const us=(rates()?rates().units:[]).filter(u=>!CREW_KEYS.has(u.key));
+  return us.find(u=>n(u.item)===t)||us.find(u=>n(u.workType+" "+u.item)===t)||us.find(u=>n(u.item).indexOf(t)===0||t.indexOf(n(u.item))===0)||null;}
+function openSheetUpload(jid){
+  if(!can.newSheet()){canSave();return;}
+  const j=jobById(jid);
+  const m=modal("Upload unit sheets — "+j.name,'<p class="sub" style="margin:0">Choose a PDF of filled-out Crew Daily Unit Checklists (the sheets printed from this job). Each page becomes one unit sheet for its location. Check every quantity against the paper before you submit — handwriting can be misread.</p>'+
+    '<div class="row-inline"><label class="btn primary" for="su-file" style="cursor:pointer">Choose PDF<input type="file" id="su-file" accept="application/pdf,.pdf" hidden></label><span class="sub" id="su-info"></span></div><div id="su-warn"></div><div id="su-list"></div>',
+    '<button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="su-save" disabled>Submit to GF</button>',"wide");
+  m.style.width="min(1100px,calc(100% - 24px))";
+  let file=null,entries=[];const info=m.querySelector("#su-info"),list=m.querySelector("#su-list");
+  const poles=(j.poles||[]).slice().sort((a,b)=>(a.n||0)-(b.n||0));
+  const allUnits=()=>CREW_SECTIONS.flatMap(s=>s[1].map(it=>[it[0],s[0]+" — "+it[1]])).concat((rates()?rates().units:[]).filter(u=>!CREW_KEYS.has(u.key)).map(u=>[u.key,u.workType+" — "+u.item]));
+  function draw(){
+    const opts=allUnits();
+    list.innerHTML=entries.map((e,i)=>{const p=poleById(j,e.poleId);const lines=Object.keys(e.qty);
+      return'<div class="su-card'+(e.include?"":" off")+'" data-i="'+i+'"><div class="su-head"><label class="chk"><input type="checkbox" data-inc'+(e.include?" checked":"")+'> Page '+e.page+'</label>'+
+        '<label class="f" style="flex:2 1 260px">Location<select data-k="poleId"><option value="">— pick the location —</option>'+poles.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===e.poleId?" selected":"")+">#"+esc(x.n)+" "+esc(x.street)+" · "+esc(x.esPole)+" · "+esc(x.ticket)+"</option>").join("")+"</select></label>"+
+        '<label class="f">Date<input type="date" data-k="workDate" value="'+esc(e.workDate)+'"></label><label class="f">Crew / lead<input data-k="crew" value="'+esc(e.crew)+'"></label>'+
+        '<label class="f">WO #<input data-k="wo" value="'+esc(e.wo)+'"></label><label class="f">FWO #<input data-k="fwo" value="'+esc(e.fwo)+'"></label><label class="f">AWC<input data-k="awc" value="'+esc(e.awc)+'"></label>'+
+        '<label class="f">Pole set?<select data-k="poleSet"><option value="">—</option><option value="yes"'+(e.poleSet==="yes"?" selected":"")+'>Yes</option><option value="no"'+(e.poleSet==="no"?" selected":"")+">No</option></select></label></div>"+
+        (e.warn.length?'<div class="banner">'+e.warn.map(esc).join("<br>")+"</div>":"")+
+        '<table class="su-units"><tbody>'+lines.map(k=>'<tr><td>'+esc((opts.find(o=>o[0]===k)||[k,unitInfo(k).item])[1])+'</td><td><input type="number" step="any" min="0" inputmode="decimal" data-q="'+esc(k)+'" value="'+esc(e.qty[k])+'"></td><td><button class="btn sm danger" type="button" data-rmq="'+esc(k)+'" aria-label="Remove unit">✕</button></td></tr>').join("")+
+        '<tr><td><select data-addk><option value="">+ Add a unit…</option>'+opts.filter(o=>!(o[0] in e.qty)).map(o=>'<option value="'+esc(o[0])+'">'+esc(o[1])+"</option>").join("")+'</select></td><td></td><td></td></tr></tbody></table>'+
+        '<label class="f wide">Notes / extras / difficulty justification<textarea data-k="notes">'+esc(e.notes)+"</textarea></label></div>";}).join("");
+    list.querySelectorAll(".su-card").forEach(card=>{const e=entries[+card.dataset.i];
+      card.querySelector("[data-inc]").onchange=ev=>{e.include=ev.target.checked;card.classList.toggle("off",!e.include);upd();};
+      card.querySelectorAll("[data-k]").forEach(el=>{el[el.tagName==="SELECT"?"onchange":"oninput"]=()=>{e[el.dataset.k]=el.value;upd();};});
+      card.querySelectorAll("[data-q]").forEach(el=>el.oninput=()=>{e.qty[el.dataset.q]=el.value;});
+      card.querySelectorAll("[data-rmq]").forEach(b=>b.onclick=()=>{delete e.qty[b.dataset.rmq];draw();});
+      card.querySelector("[data-addk]").onchange=ev=>{if(ev.target.value){e.qty[ev.target.value]="";draw();}};});
+    upd();}
+  function upd(){const n=entries.filter(e=>e.include).length;const b=m.querySelector("#su-save");b.textContent="Submit "+n+" sheet"+(n===1?"":"s")+" to GF";b.disabled=!n;}
+  m.querySelector("#su-file").onchange=async ev=>{const f=ev.target.files[0];ev.target.value="";if(!f)return;
+    if(f.size>PKG_MAX){toast(f.name+" is larger than 25 MB.",7000);return;}
+    file=f;entries=[];list.innerHTML="";info.textContent="Reading "+f.name+"…";m.querySelector("#su-warn").innerHTML="";
+    try{const r=await PKG.readUnitSheets(f,CREW_SECTIONS,msg=>{info.textContent=msg;});
+      const warn=[];if(r.scanned)warn.push("Scanned pages are read with text recognition. Handwritten numbers are often misread, so check every quantity.");
+      if(!r.sheets.length)warn.push("No Crew Daily Unit Checklist pages were found in this PDF.");
+      entries=r.sheets.map(s=>{const byT=s.ticket&&poles.find(p=>String(p.ticket).toUpperCase()===s.ticket);const byN=!byT&&s.locNo&&poles.find(p=>String(p.n)===String(s.locNo).trim());const pole=byT||byN||null;
+        const w=s.warn.slice();if(!pole)w.push("Location not matched (ticket \""+(s.ticket||"blank")+"\") — pick it from the list.");else if(!byT)w.push("Matched by location # only — confirm it's the right pole.");
+        const qty={};Object.keys(s.qty).forEach(k=>qty[k]=s.qty[k]);
+        s.others.forEach(o=>{const u=matchOtherUnit(o.text);if(u)qty[u.key]=(Number(qty[u.key])||0)+o.qty;else w.push('Other unit "'+o.text+'" ('+o.qty+") isn't on the rate list — add the right unit by hand.");});
+        const workDate=parseSheetDate(s.date);if(s.date&&!workDate)w.push('Date "'+s.date+'" couldn\'t be read.');if(!s.date)w.push("No date on the sheet.");
+        if(!Object.keys(qty).length)w.push("No unit quantities were read from this page.");
+        const dup=pole&&sheets().some(x=>x.jobId===j.id&&x.poleId===pole.id&&x.workDate===workDate);if(dup)w.push("This location already has a unit sheet for this date.");
+        return{page:s.page,include:!!pole&&Object.keys(qty).length>0&&!dup,poleId:pole?pole.id:"",workDate,crew:s.crew,wo:s.wo,fwo:s.fwo,awc:s.awc,poleSet:s.poleSet,notes:s.notes,qty,warn:w};});
+      info.textContent=f.name+": "+entries.length+" sheet page(s) found";
+      m.querySelector("#su-warn").innerHTML=warn.length?'<div class="banner">'+warn.map(esc).join("<br>")+"</div>":"";draw();}
+    catch(e){info.textContent="";toast("Couldn't read the PDF: "+errText(e),10000);}};
+  m.querySelector("#su-save").onclick=e=>busyRun(e.target,m,async()=>{
+    const sel=entries.filter(x=>x.include);
+    for(const x of sel){if(!x.poleId)throw new Error("Page "+x.page+": pick the location.");if(!x.workDate)throw new Error("Page "+x.page+": enter the date.");if(!String(x.crew).trim())throw new Error("Page "+x.page+": enter the crew / lead.");
+      const ks=Object.keys(x.qty).filter(k=>String(x.qty[k]).trim()!=="");if(!ks.length)throw new Error("Page "+x.page+": no unit quantities.");
+      for(const k of ks){const q=Number(x.qty[k]);if(!isFinite(q)||q<0)throw new Error("Page "+x.page+": "+unitInfo(k).item+" quantity isn't a number.");}}
+    if(!canSave())return;
+    const src=await storePackage(file);let made=0;const fails=[];
+    for(const x of sel){const lines=Object.keys(x.qty).filter(k=>String(x.qty[k]).trim()!==""&&Number(x.qty[k])>0).map(k=>({key:k,qty:Number(x.qty[k]),note:""}));
+      const doc={jobId:j.id,poleId:x.poleId,poleText:"",workDate:x.workDate,crew:x.crew.trim(),awc:x.awc.trim(),wo:x.wo.trim(),fwo:x.fwo.trim(),poleSet:x.poleSet,notes:x.notes.trim(),lines,status:ST.SUB,submittedAt:new Date().toISOString(),source:{file:src.file,name:src.name,page:x.page}};
+      const id=await createDoc("sheet",doc,"Uploaded from "+src.name+" page "+x.page+" ("+lines.length+" unit line(s))");if(id)made++;else fails.push(x.page);}
+    closeOverlay();refresh();toast(made+" unit sheet(s) submitted to the GF"+(fails.length?". Pages not saved: "+fails.join(", "):""),9000);});
 }
 
 /* ---------- location grid (Add Job / Add locations) ---------- */
