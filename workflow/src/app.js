@@ -84,7 +84,7 @@ const can={
   hold:d=>W()&&(isBill()||role()==="gf")&&[ST.SUB,ST.GF,ST.OK].includes(d.status),
   invoice:()=>W()&&isBill(),
   setup:()=>W()&&isBill(),
-  seePrice:()=>role()!=="crew"
+  seePrice:()=>!["crew","gf"].includes(role())  /* crews and General Foremen see units and quantities only — no prices, totals or invoices */
 };
 function applyRO(){S.canWrite=!!S.me&&role()!=="viewer";document.body.classList.toggle("ro",!S.canWrite);document.body.classList.toggle("notadmin",!isAdmin());
   document.body.classList.toggle("nobill",!isBill());document.body.classList.toggle("crewonly",role()==="crew");renderBanner();}
@@ -326,6 +326,7 @@ function route(){
   else if(["invoices","addjob","addjob-new","rates","sheets"].includes(h))S.view=h;else S.view="overview";
   if(role()==="crew"&&!["overview","job","sheet","sheets"].includes(S.view))S.view="overview";
   if(S.view==="rates"&&!canRates())S.view="overview";
+  if(["invoices","invoice"].includes(S.view)&&!can.seePrice())S.view="overview";
   const nav={sheet:"overview",sheets:"overview",job:"overview",invoice:"invoices","addjob-new":"addjob",jobedit:"addjob"}[S.view]||S.view;
   if(S.view!=="jobedit")S.jobEdit=null;
   document.querySelectorAll("[data-nav]").forEach(a=>{if(a.dataset.nav===nav)a.setAttribute("aria-current","page");else a.removeAttribute("aria-current");});
@@ -339,7 +340,7 @@ function refresh(){
   set("ct-jobs",jobs().filter(j=>!j.archived).length||"");
   set("ct-ready",sheets().filter(isReady).length||"");
   document.getElementById("btn-new").hidden=!can.newSheet();
-  document.querySelectorAll("[data-nav=rates]").forEach(a=>a.hidden=!canRates());
+  document.querySelectorAll("[data-nav=rates]").forEach(a=>a.hidden=!canRates());document.querySelectorAll("[data-nav=invoices]").forEach(a=>a.hidden=!can.seePrice());
   const v=S.view;
   if(v==="sheet")renderSheet();else if(v==="invoice")renderInvoice();else if(v==="invoices")renderInvoices();
   else if(v==="job")renderJob();else if(v==="addjob")renderAddJob();else if(v==="addjob-new")renderAddJobForm();else if(v==="jobedit")renderJobEdit();else if(v==="rates")renderRates();else if(v==="sheets")renderSheets();else renderOverview();
@@ -411,7 +412,7 @@ function renderSheet(){
   if(can.gf(d))acts.push('<button class="btn danger" type="button" id="a-gfret">Return to field</button><button class="btn primary" type="button" id="a-gfok">GF sign &amp; approve</button>');
   if(can.bill(d))acts.push('<button class="btn danger" type="button" id="a-bret">Return</button><button class="btn primary" type="button" id="a-bok">Approve for invoice</button>');
   if(can.reopen(d))acts.push('<button class="btn" type="button" id="a-reopen">Send back to GF</button>');
-  if(d.status===ST.INV&&d.invoiceId&&role()!=="crew")acts.push('<a class="btn" href="#inv-'+esc(d.invoiceId)+'">Open invoice '+esc(d.invoiceNo||"")+"</a>");
+  if(d.status===ST.INV&&d.invoiceId&&can.seePrice())acts.push('<a class="btn" href="#inv-'+esc(d.invoiceId)+'">Open invoice '+esc(d.invoiceNo||"")+"</a>");
   const ret=d.status===ST.RET&&d.returnNote?'<div class="banner bad"><b>Returned by '+esc(d.returnedBy||"")+":</b> "+esc(d.returnNote)+"</div>":"";
   const hold=d.hold&&d.hold.on?'<div class="banner"><b>On hold — '+esc(d.hold.by)+":</b> "+esc(d.hold.note)+"</div>":"";
   main.innerHTML=(j?'<a class="back" href="#job-'+esc(j.id)+'">← '+esc(j.name)+'</a>':'<a class="back" href="#overview">← Overview</a>')+ret+hold+
@@ -419,7 +420,7 @@ function renderSheet(){
     '<section class="details">'+dl("Date",esc(fmtD(d.workDate)))+dl("Crew / lead",esc(d.crew))+dl("AWC",esc(d.awc))+dl("Work order #",esc(d.wo))+dl("FWO #",esc(d.fwo))+dl("Pole set?",esc(d.poleSet==="yes"?"Yes":d.poleSet==="no"?"No":""))+
       dl("Pole # / location",esc(p?p.esPole+" — "+p.street+", "+p.town:(d.poleText?d.poleText+" (not on packet list)":"")),true)+
       (p?dl("Ticket ID",esc(p.ticket))+dl("VZ pole #",esc(p.vzPole))+dl("Pricing area",esc(poleArea(j,p))||'<span class="late">Not set</span>'):"")+
-      dl("Submitted",esc(d.createdBy+" · "+fmtT(d.submittedAt||d.createdAt)))+dl("GF signature",d.gfAt?'<span class="sig">✔ Approved by '+esc(d.gfBy)+"</span> · "+esc(fmtT(d.gfAt)):"")+(d.billAt?dl("Billing approval",esc(d.billBy+" · "+fmtT(d.billAt))):"")+dl("Invoice",esc(d.invoiceNo||""))+
+      dl("Submitted",esc(d.createdBy+" · "+fmtT(d.submittedAt||d.createdAt)))+dl("GF signature",d.gfAt?'<span class="sig">✔ Approved by '+esc(d.gfBy)+"</span> · "+esc(fmtT(d.gfAt)):"")+(d.billAt?dl("Billing approval",esc(d.billBy+" · "+fmtT(d.billAt))):"")+(can.seePrice()?dl("Invoice",esc(d.invoiceNo||"")):"")+
       (d.source?dl("Uploaded from",'<button class="btn sm" type="button" id="a-src">'+esc(d.source.name)+"</button> page "+esc(d.source.page)):"")+(d.notes?dl("Notes / extras / difficulty justification",esc(d.notes),true):"")+(d.gfNote?dl("GF note",esc(d.gfNote),true):"")+(d.billNote?dl("Billing note",esc(d.billNote),true):"")+"</section>"+
     '<h2 class="sec">Units</h2>'+sheetLinesHtml(d)+'<h2 class="sec">History</h2>'+histHtml(d);
   const on=(sel,fn)=>{const b=document.getElementById(sel);if(b)b.onclick=fn;};
@@ -1076,7 +1077,7 @@ function openInvoiceForm(presetJob){
 }
 function renderInvoice(){
   const i=S.docs.get(S.docId);const id=S.docId;
-  if(!i||i.type!=="invoice"||role()==="crew"){main.innerHTML='<a class="back" href="#invoices">← Invoices</a><div class="empty"><b>Invoice not found</b></div>';return;}
+  if(!i||i.type!=="invoice"||!can.seePrice()){main.innerHTML='<a class="back" href="#invoices">← Invoices</a><div class="empty"><b>Invoice not found</b></div>';return;}
   const chk=cents(i.poles.reduce((a,p)=>a+p.lines.reduce((x,l)=>x+(l.ext||0),0),0));const tieOk=chk===cents(i.total);
   const acts=['<button class="btn primary" type="button" id="v-xls">Eversource template (.xlsx)</button><button class="btn" type="button" id="v-pdf">P&amp;G invoice PDF</button>'];
   if(can.invoice()&&i.status==="Draft")acts.push('<button class="btn" type="button" id="v-sent">Mark as sent</button>');
