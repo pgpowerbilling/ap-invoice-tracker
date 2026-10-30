@@ -690,6 +690,7 @@ const poleArea=(j,p)=>(p&&p.area)||(j&&j.area)||"";
 const sheets=()=>[...S.docs.entries()].filter(([,d])=>d.type==="sheet").map(([id,d])=>Object.assign({id},d));
 const invoices=()=>[...S.docs.entries()].filter(([,d])=>d.type==="invoice").map(([id,d])=>Object.assign({id},d));
 const stChip=d=>'<span class="chip '+(ST_CHIP[d.status]||"c-stage")+'">'+esc(ST_LABEL[d.status]||d.status)+"</span>"+(d.hold&&d.hold.on?' <span class="chip c-bad">On hold</span>':"");
+const dateCell=d=>d.workDate?fmtD(d.workDate):'<span class="chip c-req">No date</span>';
 function sheetPoleText(d){const j=jobById(d.jobId);const p=poleById(j,d.poleId);return p?poleLabel(p):(d.poleText?d.poleText+" (not on packet list)":"—");}
 
 /* ---------- crypto (same scheme as the AP Invoice Tracker) ---------- */
@@ -1027,7 +1028,7 @@ function renderSheets(){
     document.getElementById("f-count").textContent=rows.length+" sheet"+(rows.length===1?"":"s");
     const tb=document.getElementById("tb");
     tb.innerHTML=rows.length?rows.map(s=>{const j=jobById(s.jobId);const n=(s.lines||[]).length;const pr=can.seePrice()?priceSheet(s):null;
-      return'<tr tabindex="0" data-id="'+esc(s.id)+'"><td class="mono"><b>'+esc(s.no)+'</b></td><td>'+fmtD(s.workDate)+'</td><td><div class="job-name">'+esc(j?j.name:"(job removed)")+'</div></td><td class="wrapc">'+esc(sheetPoleText(s))+"</td><td>"+esc(s.crew)+'</td><td class="mono">'+n+" unit"+(n===1?"":"s")+"</td>"+
+      return'<tr tabindex="0" data-id="'+esc(s.id)+'"><td class="mono"><b>'+esc(s.no)+'</b></td><td>'+dateCell(s)+'</td><td><div class="job-name">'+esc(j?j.name:"(job removed)")+'</div></td><td class="wrapc">'+esc(sheetPoleText(s))+"</td><td>"+esc(s.crew)+'</td><td class="mono">'+n+" unit"+(n===1?"":"s")+"</td>"+
         (pr?'<td class="mono num">'+(pr.total==null?'<span class="sub" title="'+esc(pr.errs.join("; "))+'">Check pricing</span>':money(pr.total))+"</td>":"")+"<td>"+stChip(s)+'</td><td class="sub">'+esc(fmtT(s.updatedAt))+"<br>"+esc(s.updatedBy||"")+"</td></tr>";}).join("")
       :'<tr><td colspan="9"><div class="empty"><b>No unit sheets here</b>'+(can.newSheet()?"Use + New unit sheet to log the units completed at a pole.":"Sheets appear here once crews submit them.")+"</div></td></tr>";
     bindRows(tb,id=>location.hash="sheet-"+id);
@@ -1060,7 +1061,7 @@ function renderSheet(){
   const hold=d.hold&&d.hold.on?'<div class="banner"><b>On hold — '+esc(d.hold.by)+":</b> "+esc(d.hold.note)+"</div>":"";
   main.innerHTML=(role()==="crew"?'<a class="back" href="#sheets">← My unit sheets</a>':j?'<a class="back" href="#job-'+esc(j.id)+'">← '+esc(j.name)+'</a>':'<a class="back" href="#overview">← Overview</a>')+ret+hold+
     '<section class="jobhead"><div><h1>Unit sheet '+esc(d.no)+'</h1><div class="meta">'+stChip(d)+"<span>"+esc(j?j.name:"(job removed)")+"</span><span>"+esc(fmtD(d.workDate))+'</span></div></div><div class="acts">'+acts.join("")+"</div></section>"+
-    '<section class="details">'+dl("Date",esc(fmtD(d.workDate)))+dl("Crew / lead",esc(d.crew))+dl("AWC",esc(d.awc))+dl("Work order #",esc(d.wo))+dl("FWO #",esc(d.fwo))+dl("Pole set?",esc(d.poleSet==="yes"?"Yes":d.poleSet==="no"?"No":""))+
+    '<section class="details">'+dl("Date",d.workDate?esc(fmtD(d.workDate)):'<span class="chip c-req">Not filled in yet</span>')+dl("Crew / lead",esc(d.crew))+dl("AWC",esc(d.awc))+dl("Work order #",esc(d.wo))+dl("FWO #",esc(d.fwo))+dl("Pole set?",esc(d.poleSet==="yes"?"Yes":d.poleSet==="no"?"No":""))+
       dl("Pole # / location",esc(p?p.esPole+" — "+p.street+", "+p.town:(d.poleText?d.poleText+" (not on packet list)":"")),true)+
       (p?dl("Ticket ID",esc(p.ticket))+dl("VZ pole #",esc(p.vzPole))+dl("Pricing area",esc(poleArea(j,p))||'<span class="late">Not set</span>'):"")+
       dl("Submitted",esc(d.createdBy+" · "+fmtT(d.submittedAt||d.createdAt)))+dl("CM signature",d.gfAt?'<span class="sig">✔ Approved by '+esc(d.gfBy)+"</span> · "+esc(fmtT(d.gfAt)):"")+(d.billAt?dl("Billing approval",esc(d.billBy+" · "+fmtT(d.billAt))):"")+(can.seeInvoices()?dl("Invoice",esc(d.invoiceNo||"")):"")+
@@ -1243,7 +1244,7 @@ function gfTable(host,list,showJob){
   host.innerHTML=list.length?'<div class="row-inline" style="margin-bottom:8px;align-items:center"><button class="btn sm" type="button" data-all>Select all</button><button class="btn sm" type="button" data-none>Clear</button><span class="sub" data-cnt></span><span style="margin-left:auto"></span><button class="btn primary" type="button" data-sign disabled>CM sign &amp; approve</button></div>'+
     '<div class="tablebox"><table><thead><tr><th class="nosort" style="width:36px"></th><th class="nosort">Sheet #</th><th class="nosort">Work date</th>'+(showJob?'<th class="nosort">Job</th>':"")+'<th class="nosort">Location</th><th class="nosort">Crew / lead</th><th class="nosort">Units</th>'+(can.seePrice()?'<th class="nosort num">Amount</th>':"")+'<th class="nosort">Photos</th><th class="nosort">Notes</th></tr></thead><tbody>'+
     list.map(s=>{const pr=can.seePrice()?priceSheet(s):null;const held=s.hold&&s.hold.on;const j=jobById(s.jobId);
-      return'<tr data-id="'+esc(s.id)+'"'+(held?' class="removed" title="On hold"':"")+'><td><input type="checkbox" data-s="'+esc(s.id)+'"'+(held?" disabled":"")+' aria-label="Select '+esc(s.no)+'"></td><td class="mono"><a href="#sheet-'+esc(s.id)+'"><b>'+esc(s.no)+"</b></a>"+(held?' <span class="chip c-bad">On hold</span>':"")+"</td><td>"+fmtD(s.workDate)+"</td>"+(showJob?"<td>"+esc(j?j.name:"")+"</td>":"")+'<td class="wrapc">'+esc(sheetPoleText(s))+"</td><td>"+esc(s.crew)+'</td><td class="wrapc">'+esc(unitsText(s))+"</td>"+
+      return'<tr data-id="'+esc(s.id)+'"'+(held?' class="removed" title="On hold"':"")+'><td><input type="checkbox" data-s="'+esc(s.id)+'"'+(held?" disabled":"")+' aria-label="Select '+esc(s.no)+'"></td><td class="mono"><a href="#sheet-'+esc(s.id)+'"><b>'+esc(s.no)+"</b></a>"+(held?' <span class="chip c-bad">On hold</span>':"")+"</td><td>"+dateCell(s)+"</td>"+(showJob?"<td>"+esc(j?j.name:"")+"</td>":"")+'<td class="wrapc">'+esc(sheetPoleText(s))+"</td><td>"+esc(s.crew)+'</td><td class="wrapc">'+esc(unitsText(s))+"</td>"+
         (pr?'<td class="mono num">'+(pr.total==null?'<span class="sub" title="'+esc(pr.errs.join("; "))+'">Check pricing</span>':money(pr.total))+"</td>":"")+"<td>"+photoBadges(s)+'</td><td class="wrapc sub">'+esc(s.notes)+"</td></tr>";}).join("")+"</tbody></table></div>"
     :'<div class="empty"><b>Nothing waiting for the CM</b>New unit sheets show up here to be signed.</div>';
   if(!list.length)return;
@@ -1256,8 +1257,10 @@ function gfTable(host,list,showJob){
 }
 function openGfSign(ids){
   if(!canGfSign()){canSave();return;}
-  const list=ids.map(id=>Object.assign({id},S.docs.get(id))).filter(d=>d.type==="sheet"&&d.status===ST.SUB);
-  if(!list.length){toast("Those sheets were already signed or moved.");return;}
+  let list=ids.map(id=>Object.assign({id},S.docs.get(id))).filter(d=>d.type==="sheet"&&d.status===ST.SUB);
+  const undated=list.filter(d=>!d.workDate);list=list.filter(d=>d.workDate);
+  if(undated.length)toast(undated.map(d=>d.no).join(", ")+(undated.length===1?" has":" have")+" no work date. Open "+(undated.length===1?"it":"them")+" and use Edit sheet to add the date before signing.",9000);
+  if(!list.length){if(!undated.length)toast("Those sheets were already signed or moved.");return;}
   const tot=can.seePrice()?list.map(priceSheet):[];const known=tot.filter(x=>x.total!=null);const sum=known.reduce((a,x)=>a+x.total,0);
   const m=modal("CM sign-off",'<p style="margin:0">'+list.length+" unit sheet"+(list.length===1?"":"s")+": "+esc(list.map(d=>d.no).join(", "))+"</p>"+
     (can.seePrice()&&known.length?'<p class="sub" style="margin:0">Total '+money(sum)+(known.length<list.length?" ("+(list.length-known.length)+" sheet(s) still need pricing fixed)":"")+"</p>":"")+
@@ -1267,7 +1270,7 @@ function openGfSign(ids){
   const ok=m.querySelector("#gf-ok"),go=m.querySelector("#gf-go");ok.onchange=()=>{go.disabled=!ok.checked;};
   go.onclick=e=>busyRun(e.target,m,async()=>{if(!ok.checked)throw new Error("Tick the signature box first.");if(!canSave())return;
     const at=new Date().toISOString();let n=0;const fail=[];
-    for(const d of list){const r=await commitDoc(d.id,x=>{if(x.status!==ST.SUB)throw new Error(x.no+" was already moved by someone else.");if(x.hold&&x.hold.on)throw new Error(x.no+" is on hold.");
+    for(const d of list){const r=await commitDoc(d.id,x=>{if(x.status!==ST.SUB)throw new Error(x.no+" was already moved by someone else.");if(x.hold&&x.hold.on)throw new Error(x.no+" is on hold.");if(!x.workDate)throw new Error(x.no+" has no work date.");
         x.status=ST.OK;x.gfBy=S.me.name;x.gfAt=at;x.gfSig={name:S.me.name,user:S.me.username,at};x.returnNote="";},"CM signed & approved — signature: "+S.me.name,true);if(r)n++;else fail.push(d.no);}
     closeOverlay();refresh();toast(n+" sheet(s) signed and moved to Ready to bill"+(fail.length?". Not signed: "+fail.join(", "):""),7000);},"Signing…");
 }
@@ -1298,7 +1301,7 @@ function renderJob(){
     const rows=ss.filter(s=>s.jobId===j.id).sort((a,b)=>ST_ORDER.indexOf(a.status)-ST_ORDER.indexOf(b.status)||String(b.workDate).localeCompare(String(a.workDate)));
     box.innerHTML='<div class="tablebox"><table><thead><tr><th class="nosort">Sheet #</th><th class="nosort">Work date</th><th class="nosort">Location</th><th class="nosort">Crew / lead</th><th class="nosort">Units</th>'+(can.seePrice()?'<th class="nosort num">Amount</th>':"")+'<th class="nosort">Status</th></tr></thead><tbody id="jb-sh"></tbody></table></div>';
     const tb=document.getElementById("jb-sh");
-    tb.innerHTML=rows.map(s=>{const pr=can.seePrice()?priceSheet(s):null;return'<tr tabindex="0" data-id="'+esc(s.id)+'"><td class="mono"><b>'+esc(s.no)+"</b></td><td>"+fmtD(s.workDate)+'</td><td class="wrapc">'+esc(sheetPoleText(s))+"</td><td>"+esc(s.crew)+'</td><td class="mono">'+(s.lines||[]).length+"</td>"+(pr?'<td class="mono num">'+(pr.total==null?'<span class="sub">Check pricing</span>':money(pr.total))+"</td>":"")+"<td>"+stChip(s)+"</td></tr>";}).join("")||'<tr><td colspan="7"><div class="empty"><b>No unit sheets yet</b>Crews submit one sheet per location.</div></td></tr>';
+    tb.innerHTML=rows.map(s=>{const pr=can.seePrice()?priceSheet(s):null;return'<tr tabindex="0" data-id="'+esc(s.id)+'"><td class="mono"><b>'+esc(s.no)+"</b></td><td>"+dateCell(s)+'</td><td class="wrapc">'+esc(sheetPoleText(s))+"</td><td>"+esc(s.crew)+'</td><td class="mono">'+(s.lines||[]).length+"</td>"+(pr?'<td class="mono num">'+(pr.total==null?'<span class="sub">Check pricing</span>':money(pr.total))+"</td>":"")+"<td>"+stChip(s)+"</td></tr>";}).join("")||'<tr><td colspan="7"><div class="empty"><b>No unit sheets yet</b>Crews submit one sheet per location.</div></td></tr>';
     bindRows(tb,id=>location.hash="sheet-"+id);return;}
   const q=S.pf.q||"",stf=S.pf.st||"";
   box.innerHTML='<div class="filters" style="margin-bottom:10px"><input type="search" id="pl-q" placeholder="Search street, pole #, ticket…" aria-label="Search locations" value="'+esc(q)+'"><select id="pl-st" aria-label="Status"><option value="">All statuses</option>'+["Not started","Awaiting CM signature","Returned to field","Ready to bill","Invoiced"].map(s=>"<option"+(s===stf?" selected":"")+">"+s+"</option>").join("")+'</select><span class="count" id="pl-count"></span></div>'+
@@ -1407,16 +1410,16 @@ function openSheetUpload(jid){
         const w=s.warn.slice();if(!pole)w.push("Location not matched (ticket \""+(s.ticket||"blank")+"\") — pick it from the list.");else if(!byT)w.push("Matched by location # only — confirm it's the right pole.");
         const qty={};Object.keys(s.qty).forEach(k=>qty[k]=s.qty[k]);
         s.others.forEach(o=>{const u=matchOtherUnit(o.text);if(u)qty[u.key]=(Number(qty[u.key])||0)+o.qty;else w.push('Other unit "'+o.text+'" ('+o.qty+") isn't on the rate list — add the right unit by hand.");});
-        const workDate=parseSheetDate(s.date);if(s.date&&!workDate)w.push('Date "'+s.date+'" couldn\'t be read.');if(!s.date)w.push("No date on the sheet.");
+        const workDate=parseSheetDate(s.date);if(s.date&&!workDate)w.push('Date "'+s.date+'" couldn\'t be read.');if(!s.date)w.push("No date on the sheet — it can be uploaded and the date filled in later (required before CM sign-off).");
         if(!Object.keys(qty).length)w.push("No unit quantities were read from this page.");
-        const dup=pole&&sheets().some(x=>x.jobId===j.id&&x.poleId===pole.id&&x.workDate===workDate);if(dup)w.push("This location already has a unit sheet for this date.");
+        const dup=pole&&!!workDate&&sheets().some(x=>x.jobId===j.id&&x.poleId===pole.id&&x.workDate===workDate);if(dup)w.push("This location already has a unit sheet for this date.");
         return{slots:{before:{},after:{}},page:s.page,include:!!pole&&Object.keys(qty).length>0&&!dup,poleId:pole?pole.id:"",workDate,crew:s.crew,wo:s.wo,fwo:s.fwo,awc:s.awc,poleSet:s.poleSet,notes:s.notes,qty,warn:w};});
       info.textContent=f.name+": "+entries.length+" sheet page(s) found";
       m.querySelector("#su-warn").innerHTML=warn.length?'<div class="banner">'+warn.map(esc).join("<br>")+"</div>":"";draw();}
     catch(e){info.textContent="";toast("Couldn't read the PDF: "+errText(e),10000);}};
   m.querySelector("#su-save").onclick=e=>busyRun(e.target,m,async()=>{
     const sel=entries.filter(x=>x.include);
-    for(const x of sel){if(!x.poleId)throw new Error("Page "+x.page+": pick the location.");if(!x.workDate)throw new Error("Page "+x.page+": enter the date.");if(!String(x.crew).trim())throw new Error("Page "+x.page+": enter the crew / lead.");
+    for(const x of sel){if(!x.poleId)throw new Error("Page "+x.page+": pick the location.");if(!String(x.crew).trim())throw new Error("Page "+x.page+": enter the crew / lead.");
       const ks=Object.keys(x.qty).filter(k=>String(x.qty[k]).trim()!=="");if(!ks.length)throw new Error("Page "+x.page+": no unit quantities.");
       for(const k of ks){const q=Number(x.qty[k]);if(!isFinite(q)||q<0)throw new Error("Page "+x.page+": "+unitInfo(k).item+" quantity isn't a number.");}
       const miss=photosMissing(x.slots);if(needPhotos()&&miss.length)throw new Error("Page "+x.page+": add the "+miss.join(" and ")+" photo"+(miss.length>1?"s":"")+".");}
