@@ -319,10 +319,10 @@ function route(){
   if(h.indexOf("sheet-")===0){S.view="sheet";S.docId=h.slice(6);}
   else if(h.indexOf("inv-")===0){S.view="invoice";S.docId=h.slice(4);}
   else if(h.indexOf("job-")===0){const id=h.slice(4);if(S.view!=="job"||S.docId!==id){S.jobTab="locs";S.pf={q:"",st:""};}S.view="job";S.docId=id;}
-  else if(["invoices","addjob","rates","sheets"].includes(h))S.view=h;else S.view="overview";
+  else if(["invoices","addjob","addjob-new","rates","sheets"].includes(h))S.view=h;else S.view="overview";
   if(role()==="crew"&&!["overview","job","sheet","sheets"].includes(S.view))S.view="overview";
   if(S.view==="rates"&&!canRates())S.view="overview";
-  const nav={sheet:"overview",sheets:"overview",job:"overview",invoice:"invoices"}[S.view]||S.view;
+  const nav={sheet:"overview",sheets:"overview",job:"overview",invoice:"invoices","addjob-new":"addjob"}[S.view]||S.view;
   document.querySelectorAll("[data-nav]").forEach(a=>{if(a.dataset.nav===nav)a.setAttribute("aria-current","page");else a.removeAttribute("aria-current");});
   refresh();window.scrollTo(0,0);
 }
@@ -337,7 +337,7 @@ function refresh(){
   document.querySelectorAll("[data-nav=rates]").forEach(a=>a.hidden=!canRates());
   const v=S.view;
   if(v==="sheet")renderSheet();else if(v==="invoice")renderInvoice();else if(v==="invoices")renderInvoices();
-  else if(v==="job")renderJob();else if(v==="addjob")renderAddJob();else if(v==="rates")renderRates();else if(v==="sheets")renderSheets();else renderOverview();
+  else if(v==="job")renderJob();else if(v==="addjob")renderAddJob();else if(v==="addjob-new")renderAddJobForm();else if(v==="rates")renderRates();else if(v==="sheets")renderSheets();else renderOverview();
 }
 
 /* ---------- pricing (rates from the template's Unit Rate Master; no rounding until display / final total) ---------- */
@@ -520,7 +520,7 @@ function renderOverview(){
     '<div class="tablebox"><table><thead><tr><th class="nosort">Job</th><th class="nosort">Customer</th><th class="nosort">PO</th><th class="nosort">Locations</th><th class="nosort">Progress</th><th class="nosort">Awaiting GF</th><th class="nosort">Awaiting billing</th><th class="nosort">Ready to invoice</th>'+(can.seePrice()?'<th class="nosort num">Approved $</th>':"")+'<th class="nosort">Status</th></tr></thead><tbody id="ov-jobs"></tbody></table></div>';
   const tb=document.getElementById("ov-jobs");
   tb.innerHTML=list.length?list.map(j=>{const st=jobStats(j,ss);const pct=st.locs?st.doneLocs/st.locs:0;
-    return'<tr tabindex="0" data-id="'+esc(j.id)+'"><td><div class="job-name">'+esc(j.name)+'</div><div class="sub">'+esc([j.wo?"WO "+j.wo:"",j.area||""].filter(Boolean).join(" · ")||j.desc)+"</div></td><td>"+esc(j.customer)+'</td><td class="mono">'+esc(j.po)+'</td><td class="mono">'+st.locs+'</td><td><div class="bar"><div class="track"><div class="fill" style="width:'+Math.round(pct*100)+'%"></div></div><span class="pct">'+st.doneLocs+"/"+st.locs+'</span></div><div class="sub">'+st.started+" started</div></td>"+
+    return'<tr tabindex="0" data-id="'+esc(j.id)+'"><td><div class="job-name">'+esc(j.name)+'</div><div class="sub">'+esc([j.wo?"WO "+j.wo:"",j.town||"",j.gf?"GF "+j.gf:""].filter(Boolean).join(" · ")||j.desc)+"</div></td><td>"+esc(j.customer)+'</td><td class="mono">'+esc(j.po)+'</td><td class="mono">'+st.locs+'</td><td><div class="bar"><div class="track"><div class="fill" style="width:'+Math.round(pct*100)+'%"></div></div><span class="pct">'+st.doneLocs+"/"+st.locs+'</span></div><div class="sub">'+st.started+" started</div></td>"+
       '<td class="mono">'+(st.sub||"")+'</td><td class="mono">'+(st.gf||"")+'</td><td class="mono">'+(st.ok||"")+"</td>"+(can.seePrice()?'<td class="mono num">'+(st.ok+st.inv?(st.apprOk?money(st.appr):'<span class="sub">Check pricing</span>'):"")+"</td>":"")+
       "<td>"+(j.archived?'<span class="chip c-stage">Closed</span>':'<span class="chip c-done">Active</span>')+(st.ret?' <span class="chip c-bad">'+st.ret+" returned</span>":"")+(st.hold?' <span class="chip c-bad">'+st.hold+" on hold</span>":"")+"</td></tr>";}).join("")
     :'<tr><td colspan="10"><div class="empty"><b>No jobs yet</b>'+(can.setup()?'Use <a href="#addjob">Add Job</a> to set up the first job and its locations.':"Billing sets up jobs before crews can log units.")+"</div></td></tr>";
@@ -536,15 +536,16 @@ function renderJob(){
   if(!j){main.innerHTML='<a class="back" href="#overview">← Overview</a><div class="empty"><b>Job not found</b></div>';return;}
   const ss=visibleSheets();const st=jobStats(j,ss);const tab=S.jobTab||"locs";
   main.innerHTML='<a class="back" href="#overview">← Overview</a>'+
-    '<section class="jobhead"><div><h1>'+esc(j.name)+'</h1><div class="meta">'+(j.archived?'<span class="chip c-stage">Closed</span>':'<span class="chip c-done">Active</span>')+"<span>"+esc(j.customer)+"</span>"+(j.po?"<span>PO "+esc(j.po)+"</span>":"")+(j.wo?"<span>WO / Job # "+esc(j.wo)+"</span>":"")+'</div></div><div class="acts">'+
+    '<section class="jobhead"><div><h1>'+esc(j.name)+'</h1><div class="meta">'+(j.archived?'<span class="chip c-stage">Closed</span>':'<span class="chip c-done">Active</span>')+"<span>"+esc(j.customer)+"</span>"+(j.po?"<span>PO "+esc(j.po)+"</span>":"")+(j.wo?"<span>WO / Job # "+esc(j.wo)+"</span>":"")+(j.town?"<span>"+esc(j.town)+"</span>":"")+(j.gf?"<span>GF "+esc(j.gf)+"</span>":"")+(j.estStart||j.estFinish?"<span>Est. "+esc(fmtD(j.estStart)||"?")+" – "+esc(fmtD(j.estFinish)||"?")+"</span>":"")+'</div></div><div class="acts">'+
       (can.newSheet()&&!j.archived?'<button class="btn primary" type="button" id="jb-sheet">+ New unit sheet</button>':"")+
       '<button class="btn" type="button" id="jb-print"'+((j.poles||[]).length?"":" disabled")+'>Print Unit Sheets</button>'+(can.setup()?'<button class="btn" type="button" id="jb-add">+ Add locations</button><button class="btn" type="button" id="jb-edit">Edit job</button>':"")+(role()!=="crew"?'<button class="btn" type="button" id="jb-csv">Export CSV</button>':"")+"</div></section>"+
     (!j.area&&(j.poles||[]).some(p=>!p.area)&&role()!=="crew"?'<div class="banner">No default pricing area is set for this job, so locations without their own area can\'t be priced. Set it with <b>Edit job</b>.</div>':"")+
+    (role()!=="crew"&&((j.packages||[]).length||can.setup())?'<div class="pkgbar"><b>Job package</b>'+(j.packages||[]).map((pk,i)=>'<button class="btn sm" type="button" data-pk="'+i+'" title="Uploaded '+esc(fmtT(pk.at))+" by "+esc(pk.by)+'">'+esc(pk.name)+' <span class="sub">'+fmtSize(pk.size)+"</span></button>").join("")+((j.packages||[]).length?"":'<span class="sub">None uploaded</span>')+(can.setup()?'<button class="btn sm primary" type="button" id="jb-pkg">Upload package</button>':"")+"</div>":"")+
     '<section class="tiles">'+tile("Locations",st.locs,st.started+" started",false)+tile("Awaiting GF",st.sub,"Crew sheets",false)+tile("Awaiting billing",st.gf,"GF approved",false)+tile("Ready to invoice",st.ok,"Approved for invoice",false)+tile("Invoiced",st.inv,"Sheets on invoices",false)+(can.seePrice()?tile("Approved $",st.ok+st.inv?(st.apprOk?money(st.appr):"Check"):"$0.00","Ready + invoiced",false):"")+"</section>"+
     '<div class="subtabs" role="tablist"><button role="tab" type="button" id="t-locs" aria-selected="'+(tab==="locs")+'">Locations</button><button role="tab" type="button" id="t-sheets" aria-selected="'+(tab==="sheets")+'">Unit sheets ('+ss.filter(s=>s.jobId===j.id).length+')</button></div><div id="jbody"></div>';
   document.getElementById("t-locs").onclick=()=>{S.jobTab="locs";renderJob();};document.getElementById("t-sheets").onclick=()=>{S.jobTab="sheets";renderJob();};
   const on=(i,fn)=>{const b=document.getElementById(i);if(b)b.onclick=fn;};
-  on("jb-sheet",()=>openSheetForm(null,j.id));on("jb-print",()=>openPrintPicker(j.id));on("jb-add",()=>openAddLocations(j.id));on("jb-edit",()=>openJobForm(j.id));
+  on("jb-sheet",()=>openSheetForm(null,j.id));on("jb-pkg",()=>openAddLocations(j.id,true));main.querySelectorAll("[data-pk]").forEach(b=>b.onclick=()=>openPackage(j.packages[+b.dataset.pk],b));on("jb-print",()=>openPrintPicker(j.id));on("jb-add",()=>openAddLocations(j.id));on("jb-edit",()=>openJobForm(j.id));
   on("jb-csv",()=>{const sx=sheets();const head=["#","Ticket ID","Town","Street","ES Pole #","VZ Pole #","PDF Page","WO / Job #","Pricing Area","Date Set","Status","Sheets","Notes"];
     const lines=[head].concat((j.poles||[]).map(p=>{const sh=sx.filter(s=>s.jobId===j.id&&s.poleId===p.id);return[p.n,p.ticket,p.town,p.street,p.esPole,p.vzPole,p.pdfPage,p.woJob||j.wo,poleArea(j,p),p.dateSet,poleStatus(sh)[0],sh.map(s=>s.no).join(" "),p.notes];}));
     download(new Blob(["﻿"+lines.map(r=>r.map(v=>'"'+String(v==null?"":v).replace(/"/g,'""')+'"').join(",")).join("\r\n")],{type:"text/csv"}),"Locations - "+j.name+".csv");});
@@ -631,14 +632,14 @@ function rowsFromTable(aoa){
 function locGrid(host,state){
   const areas=rates()?rates().areas:[];
   host.innerHTML='<div class="row-inline"><label class="f" for="lg-count" style="width:200px">How many locations?<input type="number" id="lg-count" min="0" max="500" step="1" inputmode="numeric" value="'+(state.rows.length||"")+'"></label><button class="btn" type="button" id="lg-set">Set rows</button>'+
-    '<label class="btn" for="lg-file" style="cursor:pointer">Upload sheet (.xlsx / .csv)<input type="file" id="lg-file" accept=".xlsx,.xlsm,.csv,.txt" hidden></label><button class="btn" type="button" id="lg-paste-t">Paste from Excel</button><span class="sub" id="lg-info"></span></div>'+
+    (state.pkg?'<label class="btn primary" for="lg-pkg-in" style="cursor:pointer">Upload job package (PDF)<input type="file" id="lg-pkg-in" accept="application/pdf,.pdf" hidden></label>':"")+'<label class="btn" for="lg-file" style="cursor:pointer">Upload sheet (.xlsx / .csv)<input type="file" id="lg-file" accept=".xlsx,.xlsm,.csv,.txt" hidden></label><button class="btn" type="button" id="lg-paste-t">Paste from Excel</button><span class="sub" id="lg-info"></span></div>'+
     '<div id="lg-sheetw" class="row-inline" hidden><label class="f" for="lg-sheet">Worksheet<select id="lg-sheet"></select></label></div>'+
     '<div class="pastebox" id="lg-paste" hidden><p class="sub" style="margin:0 0 6px">Copy the rows from Excel (include the header row if there is one) and paste them here.</p><textarea id="lg-paste-box" aria-label="Paste rows from Excel"></textarea><div class="row-inline" style="margin-top:6px"><button class="btn primary" type="button" id="lg-paste-go">Use pasted rows</button></div></div>'+
-    '<div id="lg-warn"></div><div class="grid-edit"><table><thead><tr><th class="nosort">#</th>'+LOC_COLS.map(c=>'<th class="nosort">'+esc(c[1])+"</th>").join("")+'<th class="nosort"></th></tr></thead><tbody id="lg-body"></tbody></table></div>';
+    '<div id="lg-pkgst"></div><div id="lg-warn"></div><div class="grid-edit"><table><thead><tr><th class="nosort">#</th>'+LOC_COLS.map(c=>'<th class="nosort">'+esc(c[1])+"</th>").join("")+'<th class="nosort"></th></tr></thead><tbody id="lg-body"></tbody></table></div>';
   const body=host.querySelector("#lg-body");const info=host.querySelector("#lg-info");
   function draw(){
-    body.innerHTML=state.rows.map((L,i)=>'<tr data-i="'+i+'"><td class="mono sub">'+(state.start+i)+"</td>"+LOC_COLS.map(c=>"<td>"+(c[2]==="area"?'<select data-k="area" aria-label="Pricing area row '+(i+1)+'"><option value="">Job default</option>'+areas.map(a=>"<option"+(a===L.area?" selected":"")+">"+esc(a)+"</option>").join("")+"</select>":'<input class="'+c[2]+'" data-k="'+c[0]+'" value="'+esc(L[c[0]])+'" aria-label="'+esc(c[1].replace(" *",""))+" row "+(i+1)+'">')+"</td>").join("")+'<td><button class="btn sm danger" type="button" data-rm aria-label="Remove row '+(i+1)+'">✕</button></td></tr>').join("")||'<tr><td colspan="12" class="sub" style="padding:14px">Enter how many locations, upload a sheet, or paste from Excel.</td></tr>';
-    body.querySelectorAll("tr[data-i]").forEach(tr=>{const i=+tr.dataset.i;tr.querySelectorAll("[data-k]").forEach(inp=>{const ev=inp.tagName==="SELECT"?"onchange":"oninput";inp[ev]=()=>{state.rows[i][inp.dataset.k]=inp.value;};});
+    body.innerHTML=state.rows.map((L,i)=>'<tr data-i="'+i+'"'+(L._check?' class="chk" title="Check: '+esc(L._check)+'"':"")+'><td class="mono sub">'+(state.start+i)+(L._check?' <span class="late" aria-label="check this row">⚠</span>':"")+"</td>"+LOC_COLS.map(c=>"<td>"+(c[2]==="area"?'<select data-k="area" aria-label="Pricing area row '+(i+1)+'"><option value="">Job default</option>'+areas.map(a=>"<option"+(a===L.area?" selected":"")+">"+esc(a)+"</option>").join("")+"</select>":'<input class="'+c[2]+'" data-k="'+c[0]+'" value="'+esc(L[c[0]])+'" aria-label="'+esc(c[1].replace(" *",""))+" row "+(i+1)+'">')+"</td>").join("")+'<td><button class="btn sm danger" type="button" data-rm aria-label="Remove row '+(i+1)+'">✕</button></td></tr>').join("")||'<tr><td colspan="12" class="sub" style="padding:14px">Enter how many locations, upload a sheet, or paste from Excel.</td></tr>';
+    body.querySelectorAll("tr[data-i]").forEach(tr=>{const i=+tr.dataset.i;tr.querySelectorAll("[data-k]").forEach(inp=>{const ev=inp.tagName==="SELECT"?"onchange":"oninput";inp[ev]=()=>{state.rows[i][inp.dataset.k]=inp.value;if(state.rows[i]._check){delete state.rows[i]._check;tr.classList.remove("chk");tr.removeAttribute("title");const w=tr.querySelector(".late");if(w)w.remove();}};});
       tr.querySelector("[data-rm]").onclick=()=>{state.rows.splice(i,1);host.querySelector("#lg-count").value=state.rows.length;draw();};});
     info.textContent=state.rows.length?state.rows.length+" location"+(state.rows.length===1?"":"s"):"";}
   function setRows(rows,warn){state.rows=rows;host.querySelector("#lg-count").value=rows.length;host.querySelector("#lg-warn").innerHTML=warn&&warn.length?'<div class="banner">'+warn.slice(0,10).map(esc).join("<br>")+(warn.length>10?"<br>…and "+(warn.length-10)+" more":"")+"</div>":"";draw();}
@@ -656,71 +657,123 @@ function locGrid(host,state){
     try{if(/\.(csv|txt)$/i.test(f.name)){book=null;host.querySelector("#lg-sheetw").hidden=true;const r=rowsFromTable(parseCsv(await f.text()));setRows(r.rows,r.warn);}
       else{book=await TMPL.tables(await f.arrayBuffer());sheetSel.innerHTML=book.names.map(n=>"<option>"+esc(n)+"</option>").join("");host.querySelector("#lg-sheetw").hidden=book.names.length<2;await loadSheet();}
     }catch(e){info.textContent="";toast("Couldn't read that file: "+errText(e),8000);}ev.target.value="";};
-  draw();
+  const pin=host.querySelector("#lg-pkg-in");
+  const pkgSt=()=>{host.querySelector("#lg-pkgst").innerHTML=state.pkgFile?'<div class="okbox">Job package <b>'+esc(state.pkgFile.name)+"</b> ("+fmtSize(state.pkgFile.size)+') will be attached to the job when you save. <button class="btn sm" type="button" id="lg-pkg-x">Remove</button></div>':"";
+    const x=host.querySelector("#lg-pkg-x");if(x)x.onclick=()=>{state.pkgFile=null;pkgSt();};};
+  if(pin)pin.onchange=async ev=>{const f=ev.target.files[0];ev.target.value="";if(!f)return;
+    if(f.size>PKG_MAX){toast(f.name+" is larger than 25 MB.",7000);return;}
+    state.pkgFile=f;pkgSt();info.textContent="Reading "+f.name+"…";
+    try{const r=await PKG.read(f,msg=>{info.textContent=msg;});
+      const have=new Set((state.existing||[]).map(p=>String(p.ticket||"").toUpperCase()).filter(Boolean));
+      const dup=r.rows.filter(L=>L.ticket&&have.has(L.ticket.toUpperCase()));const rows=r.rows.filter(L=>!dup.includes(L));
+      const warn=r.warn.slice();if(r.scanned)warn.unshift("This package is a scanned image, so the rows below were read with text recognition. Check each row against the PDF before saving; rows marked ⚠ need a closer look.");
+      if(dup.length)warn.push(dup.length+" location(s) already on this job were skipped: "+dup.map(L=>L.ticket).join(", "));
+      const nchk=rows.filter(L=>L._check).length;if(nchk)warn.push(nchk+" row(s) marked ⚠ to check.");
+      const filled=state.rows.filter(L=>Object.keys(L).some(k=>k[0]!=="_"&&L[k]));
+      const merged=filled.length&&rows.length&&confirm("Add the "+rows.length+" location(s) from the package to the "+filled.length+" row(s) already entered? (Cancel replaces them.)")?filled.concat(rows):rows;
+      setRows(merged,warn);if(!r.rows.length)toast("No pole rows were found in "+f.name+". The file is still attached; enter locations another way.",9000);}
+    catch(e){info.textContent="";toast("Couldn't read the package: "+errText(e)+". It is still attached; enter locations another way.",10000);}};
+  pkgSt();draw();
 }
 function parseCsv(t){const rows=[];let row=[],cell="",q=false;for(let i=0;i<t.length;i++){const c=t[i];
   if(q){if(c==='"'){if(t[i+1]==='"'){cell+='"';i++;}else q=false;}else cell+=c;}
   else if(c==='"')q=true;else if(c===","){row.push(cell);cell="";}else if(c==="\n"){row.push(cell);rows.push(row);row=[];cell="";}else if(c!=="\r")cell+=c;}
   if(cell||row.length){row.push(cell);rows.push(row);}return rows;}
 function checkLocs(rows,existing){
-  const used=rows.filter(L=>Object.values(L).some(v=>String(v).trim()));
+  const used=rows.filter(L=>Object.keys(L).some(k=>k[0]!=="_"&&String(L[k]==null?"":L[k]).trim()));
   const errs=[];const seen=new Set((existing||[]).map(p=>String(p.ticket||"").toUpperCase()).filter(Boolean));
   used.forEach((L,i)=>{if(!L.street.trim()||!L.esPole.trim())errs.push("Row "+(i+1)+": Street and ES pole # are required.");
     const t=L.ticket.trim().toUpperCase();if(t){if(seen.has(t))errs.push("Row "+(i+1)+": Ticket "+L.ticket+" is already on this job.");seen.add(t);}});
-  return{used:used.map(L=>{const o={};Object.keys(L).forEach(k=>o[k]=String(L[k]).trim());return o;}),errs};}
+  return{used:used.map(L=>{const o={};Object.keys(L).forEach(k=>{if(k[0]!=="_")o[k]=String(L[k]==null?"":L[k]).trim();});return o;}),errs};}
+/* ---------- job fields (Add Job form + Edit job) ---------- */
+const JOB_FIELDS=[["name","Job name *","text",true],["customer","Customer (bill to) *","text"],["po","PO","text"],["wo","WO / Job #","text"],["town","Town / service area","text"],["gf","General Foreman","gf"],["estStart","Est. start","date"],["estFinish","Est. finish","date"],["area","Default pricing area","area"],["desc","Description","textarea",true]];
+const blankJob=()=>({name:"",customer:"Eversource",po:"",wo:"",town:"",gf:"",estStart:"",estFinish:"",area:"",desc:""});
+function gfNames(){const p=(S.index&&S.index.profiles)||{};return Object.values(p).filter(x=>x.role==="gf").map(x=>x.name).sort();}
+function jobFieldsHtml(pre,v){
+  return JOB_FIELDS.map(([k,l,t,wide])=>{const id=pre+"-"+k;const val=v[k]==null?"":v[k];
+    if(t==="area")return'<label class="f" for="'+id+'">'+esc(l)+areaSelect(id,val)+"</label>";
+    if(t==="textarea")return'<label class="f wide" for="'+id+'">'+esc(l)+'<textarea id="'+id+'">'+esc(val)+"</textarea></label>";
+    if(t==="gf")return'<label class="f" for="'+id+'">'+esc(l)+'<input id="'+id+'" list="'+pre+'-gfl" value="'+esc(val)+'" autocomplete="off"><datalist id="'+pre+'-gfl">'+gfNames().map(n=>"<option>"+esc(n)+"</option>").join("")+"</datalist></label>";
+    return'<label class="f'+(wide?" wide":"")+'" for="'+id+'">'+esc(l)+'<input id="'+id+'"'+(t==="date"?' type="date"':"")+' value="'+esc(val)+'"></label>';}).join("");}
+function readJobFields(root,pre){const v={};JOB_FIELDS.forEach(([k])=>{const el=root.querySelector("#"+pre+"-"+k);v[k]=el?el.value.trim():"";});return v;}
+function jobFieldErr(v,selfId){if(!v.name)return"Enter the job name.";if(!v.customer)return"Enter the customer.";
+  if(jobs().some(j=>j.id!==selfId&&j.name.trim().toLowerCase()===v.name.toLowerCase()))return"A job named "+v.name+" already exists.";
+  if(v.estStart&&v.estFinish&&v.estFinish<v.estStart)return"Est. finish is before est. start.";return"";}
+
+/* ---------- job package files (encrypted, stored with the job) ---------- */
+const PKG_MAX=25*1024*1024;
+async function storePackage(file){
+  if(file.size>PKG_MAX)throw new Error(file.name+" is larger than 25 MB.");
+  const name="pkg-"+hexId(8)+".enc.json";const buf=await file.arrayBuffer();
+  await ghPut("data/files/"+name,JSON.stringify(await encJson(S.dek,{name:file.name,type:file.type||"application/pdf",b64:b64(buf)})),null,"Workflow: store job package");
+  return{file:name,name:file.name,size:file.size,at:new Date().toISOString(),by:S.me.name};}
+async function openPackage(pk,btn){
+  const t=btn&&btn.textContent;if(btn){btn.disabled=true;btn.textContent="Opening…";}
+  try{let box;if(hasToken()){const f=await ghGet("data/files/"+pk.file);if(!f)throw new Error("The package file is missing.");box=JSON.parse(f.text);}else box=await pagesGet("data/files/"+pk.file);
+    const o=await decJson(S.dek,box);download(new Blob([unb64(o.b64)],{type:o.type||"application/pdf"}),o.name||pk.name);}
+  catch(e){toast(errText(e),8000);}finally{if(btn){btn.disabled=false;btn.textContent=t;}}}
+const fmtSize=n=>n>=1048576?(n/1048576).toFixed(1)+" MB":Math.max(1,Math.round(n/1024))+" KB";
+
+/* ---------- Add Job tab: job list + "Add another job" ---------- */
 function renderAddJob(){
   if(!can.setup()){main.innerHTML='<div class="empty"><b>Billing sets up jobs</b>Ask an admin or billing approver to add the job.</div>';return;}
-  const st=S.addJob||(S.addJob={rows:[],start:1,f:{name:"",customer:"Eversource",po:"",wo:"",area:"",desc:""}});
-  const f=(k,l,wide)=>'<label class="f'+(wide?" wide":"")+'" for="aj-'+k+'">'+esc(l)+'<input id="aj-'+k+'" value="'+esc(st.f[k])+'"></label>';
-  main.innerHTML='<section class="jobhead"><div><h1>Add Job</h1><div class="meta">Enter the job, then its locations: type them in or upload the packet\'s spreadsheet.</div></div></section>'+
-    '<section class="details" style="display:block"><fieldset style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))"><legend>Job</legend>'+f("name","Job name *",true)+f("customer","Customer (bill to) *")+f("po","PO")+f("wo","WO / Job #")+
-    '<label class="f" for="aj-area">Default pricing area'+areaSelect("aj-area",st.f.area)+"</label>"+'<label class="f wide" for="aj-desc">Description<textarea id="aj-desc">'+esc(st.f.desc)+"</textarea></label></fieldset></section>"+
-    '<h2 class="sec">Locations</h2><div id="aj-grid"></div>'+
-    '<div class="row-inline" style="justify-content:flex-end;margin-top:4px"><span class="err" id="aj-err" role="alert" style="margin:0 auto 0 0"></span><button class="btn" type="button" id="aj-clear">Clear form</button><button class="btn primary" type="button" id="aj-save">Create job</button></div>';
-  ["name","customer","po","wo","area"].forEach(k=>{const el=document.getElementById("aj-"+k);el[el.tagName==="SELECT"?"onchange":"oninput"]=()=>{st.f[k]=el.value;};});
-  document.getElementById("aj-desc").oninput=e=>{st.f.desc=e.target.value;};
+  const list=jobs().slice().sort((a,b)=>(a.archived?1:0)-(b.archived?1:0)||String(b.createdAt||"").localeCompare(String(a.createdAt||"")));
+  const just=S.justAdded&&jobById(S.justAdded);S.justAdded=null;
+  main.innerHTML='<section class="jobhead"><div><h1>Add Job</h1><div class="meta">'+list.length+" job"+(list.length===1?"":"s")+' set up</div></div><div class="acts"><button class="btn primary" type="button" id="aj-new">+ Add another job</button></div></section>'+
+    (just?'<div class="okbox">Job <b>'+esc(just.name)+"</b> was created with "+(just.poles||[]).length+' location(s). <a href="#job-'+esc(just.id)+'">Open it</a> or add another job.</div>':"")+
+    '<div class="tablebox"><table><thead><tr><th class="nosort">Job</th><th class="nosort">Customer</th><th class="nosort">PO</th><th class="nosort">WO / Job #</th><th class="nosort">Town / area</th><th class="nosort">General Foreman</th><th class="nosort">Est. start</th><th class="nosort">Est. finish</th><th class="nosort">Locations</th><th class="nosort">Job package</th><th class="nosort">Status</th></tr></thead><tbody id="aj-list"></tbody></table></div>';
+  const tb=document.getElementById("aj-list");
+  tb.innerHTML=list.map(j=>'<tr tabindex="0" data-id="'+esc(j.id)+'"><td><div class="job-name">'+esc(j.name)+"</div></td><td>"+esc(j.customer)+'</td><td class="mono">'+esc(j.po)+'</td><td class="mono">'+esc(j.wo)+"</td><td>"+esc(j.town)+"</td><td>"+esc(j.gf)+"</td><td>"+fmtD(j.estStart)+"</td><td>"+fmtD(j.estFinish)+'</td><td class="mono">'+(j.poles||[]).length+"</td><td>"+((j.packages||[]).length?esc(j.packages.length+" file"+(j.packages.length===1?"":"s")):'<span class="sub">—</span>')+"</td><td>"+(j.archived?'<span class="chip c-stage">Closed</span>':'<span class="chip c-done">Active</span>')+"</td></tr>").join("")||'<tr><td colspan="11"><div class="empty"><b>No jobs yet</b>Use + Add another job.</div></td></tr>';
+  bindRows(tb,id=>location.hash="job-"+id);
+  document.getElementById("aj-new").onclick=()=>{S.addJob=null;location.hash="addjob-new";};
+}
+function renderAddJobForm(){
+  if(!can.setup()){location.hash="addjob";return;}
+  const st=S.addJob||(S.addJob={rows:[],start:1,f:blankJob(),pkg:true});
+  main.innerHTML='<a class="back" href="#addjob">← Add Job</a><section class="jobhead"><div><h1>New job</h1><div class="meta">Enter the job details, then upload the job package to fill in the locations (or upload a spreadsheet, paste, or type them).</div></div></section>'+
+    '<section class="details" style="display:block"><fieldset style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))"><legend>Job</legend>'+jobFieldsHtml("aj",st.f)+"</fieldset></section>"+
+    '<h2 class="sec">Job package &amp; locations</h2><div id="aj-grid"></div>'+
+    '<div class="row-inline" style="justify-content:flex-end;margin-top:4px"><span class="err" id="aj-err" role="alert" style="margin:0 auto 0 0"></span><button class="btn" type="button" id="aj-cancel">Cancel</button><button class="btn primary" type="button" id="aj-save">Create job</button></div>';
+  main.querySelectorAll("[id^=aj-]").forEach(el=>{if(!/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)||el.closest("#aj-grid"))return;const ev=el.tagName==="SELECT"?"onchange":"oninput";el[ev]=()=>{st.f[el.id.slice(3)]=el.value;};});
   locGrid(document.getElementById("aj-grid"),st);
-  document.getElementById("aj-clear").onclick=()=>{if(!confirm("Clear the job and all location rows?"))return;S.addJob=null;renderAddJob();};
+  document.getElementById("aj-cancel").onclick=()=>{const dirty=st.rows.length||st.f.name||st.pkgFile;if(dirty&&!confirm("Discard this job?"))return;S.addJob=null;location.hash="addjob";};
   document.getElementById("aj-save").onclick=async e=>{const err=document.getElementById("aj-err");err.textContent="";const b=e.target;
-    const v={name:st.f.name.trim(),customer:st.f.customer.trim(),po:st.f.po.trim(),wo:st.f.wo.trim(),area:st.f.area,desc:st.f.desc.trim()};
-    if(!v.name){err.textContent="Enter the job name.";return;}if(!v.customer){err.textContent="Enter the customer.";return;}
-    if(jobs().some(j=>j.name.trim().toLowerCase()===v.name.toLowerCase())){err.textContent="A job named "+v.name+" already exists.";return;}
+    const v=readJobFields(main,"aj");const fe=jobFieldErr(v);if(fe){err.textContent=fe;return;}
     const c=checkLocs(st.rows,[]);if(c.errs.length){err.textContent=c.errs.slice(0,3).join(" ")+(c.errs.length>3?" (+"+(c.errs.length-3)+" more)":"");return;}
     if(!c.used.length&&!confirm("Create the job with no locations? You can add them later."))return;
-    if(!canSave())return;b.disabled=true;b.textContent="Saving…";
-    try{const id=newId("j-");const now=new Date().toISOString();
-      await commitIndex(ix=>{ix.jobs=ix.jobs||[];ix.jobs.push(Object.assign({id,archived:false,createdAt:now,createdBy:S.me.name,poles:c.used.map((L,i)=>Object.assign({id:newId("p-")+i,n:i+1},L))},v));},"Workflow: add job");
-      S.addJob=null;toast("Job "+v.name+" created with "+c.used.length+" location"+(c.used.length===1?"":"s"));location.hash="job-"+id;}
+    if(!canSave())return;b.disabled=true;
+    try{let pk=null;if(st.pkgFile){b.textContent="Uploading package…";pk=await storePackage(st.pkgFile);}
+      b.textContent="Saving…";const id=newId("j-");const now=new Date().toISOString();
+      await commitIndex(ix=>{ix.jobs=ix.jobs||[];ix.jobs.push(Object.assign({id,archived:false,createdAt:now,createdBy:S.me.name,packages:pk?[pk]:[],poles:c.used.map((L,i)=>Object.assign({id:newId("p-")+i,n:i+1},L))},v));},"Workflow: add job");
+      S.addJob=null;S.justAdded=id;toast("Job "+v.name+" created");location.hash="addjob";}
     catch(x){err.textContent=errText(x);}finally{b.disabled=false;b.textContent="Create job";}};
 }
-function openAddLocations(jid){
+function openAddLocations(jid,startWithPackage){
   if(!can.setup()){canSave();return;}
-  const j=jobById(jid);const start=(j.poles||[]).reduce((a,p)=>Math.max(a,p.n||0),0)+1;const st={rows:[],start};
-  const m=modal("Add locations to "+j.name,'<div id="al-grid"></div>','<button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="al-save">Add locations</button>',"wide");
+  const j=jobById(jid);const start=(j.poles||[]).reduce((a,p)=>Math.max(a,p.n||0),0)+1;const st={rows:[],start,pkg:true,existing:j.poles||[]};
+  const m=modal(startWithPackage?"Upload job package — "+j.name:"Add locations to "+j.name,'<div id="al-grid"></div>','<button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="al-save">'+(startWithPackage?"Save package &amp; locations":"Add locations")+"</button>","wide");
   m.style.width="min(1180px,calc(100% - 24px))";locGrid(m.querySelector("#al-grid"),st);
-  m.querySelector("#al-save").onclick=e=>busyRun(e.target,m,async()=>{const c=checkLocs(st.rows,j.poles);if(c.errs.length)throw new Error(c.errs.slice(0,3).join(" "));if(!c.used.length)throw new Error("Add at least one location.");if(!canSave())return;
-    await commitIndex(ix=>{const t=ix.jobs.find(x=>x.id===jid);t.poles=t.poles||[];let n=t.poles.reduce((a,p)=>Math.max(a,p.n||0),0);c.used.forEach((L,i)=>t.poles.push(Object.assign({id:newId("p-")+i,n:++n},L)));},"Workflow: add locations");
-    closeOverlay();refresh();toast(c.used.length+" location(s) added");});
+  if(startWithPackage)m.querySelector("#lg-pkg-in").click();
+  m.querySelector("#al-save").onclick=e=>busyRun(e.target,m,async()=>{const c=checkLocs(st.rows,j.poles);if(c.errs.length)throw new Error(c.errs.slice(0,3).join(" "));
+    if(!c.used.length&&!st.pkgFile)throw new Error("Add at least one location.");if(!canSave())return;
+    const pk=st.pkgFile?await storePackage(st.pkgFile):null;
+    await commitIndex(ix=>{const t=ix.jobs.find(x=>x.id===jid);t.poles=t.poles||[];if(pk)(t.packages=t.packages||[]).push(pk);let n=t.poles.reduce((a,p)=>Math.max(a,p.n||0),0);c.used.forEach((L,i)=>t.poles.push(Object.assign({id:newId("p-")+i,n:++n},L)));},"Workflow: add locations");
+    closeOverlay();refresh();toast((pk?"Package saved. ":"")+c.used.length+" location(s) added");});
 }
 
 /* ---------- jobs ---------- */
 function areaSelect(id,val,blankLabel){const areas=rates()?rates().areas:[];return'<select id="'+id+'"><option value="">'+esc(blankLabel||"— not set —")+"</option>"+areas.map(a=>'<option'+(a===val?" selected":"")+">"+esc(a)+"</option>").join("")+"</select>";}
 function openJobForm(id){
   if(!can.setup()){canSave();return;}
-  const j=id?Object.assign({},jobById(id)):{name:"",customer:"Eversource",po:"",wo:"",area:"",desc:"",archived:false};
-  const f=(k,l,wide)=>'<label class="f'+(wide?" wide":"")+'" for="jf-'+k+'">'+esc(l)+'<input id="jf-'+k+'" value="'+esc(j[k])+'"></label>';
-  const m=modal(id?"Edit job":"Add job",'<fieldset style="grid-template-columns:1fr 1fr">'+f("name","Job / packet name",true)+f("customer","Customer (bill to)")+f("po","PO")+f("wo","WO / Job # (Pole Register)")+
-    '<label class="f" for="jf-area">Default pricing area'+areaSelect("jf-area",j.area)+"</label>"+
-    '<label class="f wide" for="jf-desc">Description<textarea id="jf-desc">'+esc(j.desc)+"</textarea></label>"+(id?'<label class="f chk wide" for="jf-arch"><input type="checkbox" id="jf-arch"'+(j.archived?" checked":"")+"> Closed (hide from crews)</label>":"")+"</fieldset>"+
-    '<p class="sub" style="margin:0">The pricing area picks the Eversource rate column. Each pole uses this default unless a different area is set on that pole.</p>',
-    '<button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="jf-save">'+(id?"Save job":"Add job")+"</button>");
+  const j=Object.assign(blankJob(),jobById(id));
+  const m=modal("Edit job",'<fieldset style="grid-template-columns:1fr 1fr">'+jobFieldsHtml("jf",j)+'<label class="f chk wide" for="jf-arch"><input type="checkbox" id="jf-arch"'+(j.archived?" checked":"")+"> Closed (hide from crews)</label></fieldset>"+
+    '<p class="sub" style="margin:0">The pricing area picks the Eversource rate column. Each location uses this default unless a different area is set on that location.</p>',
+    '<button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="jf-save">Save job</button>');
   m.querySelector("#jf-save").onclick=e=>busyRun(e.target,m,async()=>{
-    const g=k=>m.querySelector("#jf-"+k).value.trim();
-    const v={name:g("name"),customer:g("customer"),po:g("po"),wo:g("wo"),area:g("area"),desc:m.querySelector("#jf-desc").value.trim(),archived:id?m.querySelector("#jf-arch").checked:false};
-    if(!v.name)throw new Error("Enter the job name.");if(!v.customer)throw new Error("Enter the customer.");
+    const v=readJobFields(m,"jf");const fe=jobFieldErr(v,id);if(fe)throw new Error(fe);v.archived=m.querySelector("#jf-arch").checked;
     if(!canSave())return;
-    await commitIndex(ix=>{ix.jobs=ix.jobs||[];if(id){const t=ix.jobs.find(x=>x.id===id);if(t)Object.assign(t,v,{updatedAt:new Date().toISOString(),updatedBy:S.me.name});}else ix.jobs.push(Object.assign({id:newId("j-"),poles:[],createdAt:new Date().toISOString(),createdBy:S.me.name},v));},"Workflow: save job");
-    closeOverlay();refresh();toast(id?"Job saved":"Job added");
+    await commitIndex(ix=>{const t=(ix.jobs||[]).find(x=>x.id===id);if(t)Object.assign(t,v,{updatedAt:new Date().toISOString(),updatedBy:S.me.name});},"Workflow: save job");
+    closeOverlay();refresh();toast("Job saved");
   });
 }
 
