@@ -126,11 +126,12 @@ dl.kv dt{color:var(--muted);font-weight:600} dl.kv dd{margin:0}
   dl.kv{grid-template-columns:1fr}
 }
 </style>
+<script>/* never keep sign-in details in the address bar or history */(function(){try{if(/[?&](password|username)=/i.test(location.search))history.replaceState(null,"",location.pathname+location.hash);}catch(e){}})();</script>
 </head>
 <body>
 
 <section id="login">
-  <form class="login-card" id="loginForm" autocomplete="on">
+  <form class="login-card" id="loginForm" autocomplete="on" method="post" action="javascript:void(0)" onsubmit="return false">
     <img class="login-logo" src="pg-logo.jpg" alt="P&amp;G Power Co.">
     <p class="login-title">Vendor Invoice Tracker</p>
     <p class="login-sub">Sign in to continue</p>

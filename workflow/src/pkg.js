@@ -42,7 +42,7 @@ function inferCols(ls,width){
 function parse(pages){
   const rows=[],warn=[];let base=null;
   pages.forEach((pg,pi)=>{
-    const ls=lines(pg.words,0.45);const h=findHeader(ls);let start=0,anchors;
+    const ls=withAnnots(pg,0.45);const h=findHeader(ls);let start=0,anchors;
     if(h){anchors=h.anchors;base={anchors,width:pg.width};start=h.index+1;}
     else if(base){const k=pg.width/base.width;anchors={};Object.keys(base.anchors).forEach(c=>anchors[c]=base.anchors[c]*k);}
     else if((anchors=inferCols(ls,pg.width))){warn.push("Page "+(pi+1)+": the header row couldn't be read, so columns were taken in packet order: "+Object.keys(anchors).map(k=>({ticket:"Ticket Id",town:"Place",street:"Street",esPole:"ES Pole#",vzPole:"VZ Pole#",dateSet:"Date set"}[k])).join(", ")+".");}
@@ -68,22 +68,36 @@ async function ocrWorker(progress){if(!tess){await loadScript(TESS);progress&&pr
 function tessWords(data){
   if(data.words&&data.words.length)return data.words;
   const out=[];(data.blocks||[]).forEach(b=>(b.paragraphs||[]).forEach(p=>(p.lines||[]).forEach(l=>(l.words||[]).forEach(w=>out.push(w)))));return out;}
+function annotWords(a,k){/* split a text box into words spread across its width; vertical position = box centre */
+  const parts=String(a.t).split(/\s+/).filter(Boolean);const w=(a.x1-a.x0)*k/Math.max(1,parts.length);
+  return parts.map((t,i)=>({t,x0:a.x0*k+i*w,x1:a.x0*k+(i+1)*w,y0:a.cy*k-4*k,y1:a.cy*k+4*k,annot:true}));}
+/* attach typed-on entries to the nearest printed line (text boxes are rarely centred exactly on a row) */
+function withAnnots(pg,tolFactor){
+  const ls=lines(pg.words,tolFactor);const an=[].concat.apply([],pg.annots||[]);if(!an.length)return ls;
+  const gaps=ls.slice(1).map((L,i)=>L.cy-ls[i].cy).filter(g=>g>0).sort((a,b)=>a-b);const step=gaps.length?gaps[Math.floor(gaps.length/2)]:12;
+  an.forEach(w=>{const cy=(w.y0+w.y1)/2;let best=null,bd=Infinity;
+    ls.forEach(L=>{if(!L.words.some(x=>!x.annot&&(x.x1>w.x0-pg.width*0.35&&x.x0<w.x1+pg.width*0.35)))return;const d=Math.abs(L.cy-cy);if(d<bd){bd=d;best=L;}});
+    if(best&&bd<=step*0.9){best.words.push(w);best.words.sort((a,b)=>a.x0-b.x0);}else{const L={cy,h:8,words:[w]};ls.push(L);ls.sort((a,b)=>a.cy-b.cy);}});
+  return ls;}
 async function pagesOf(file,progress){
   const lib=await getPdfjs();const doc=await lib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;const pages=[];let scanned=false;
   for(let n=1;n<=doc.numPages;n++){progress&&progress("Reading page "+n+" of "+doc.numPages+"…");
     const page=await doc.getPage(n);const vp=page.getViewport({scale:1});const tc=await page.getTextContent();
+    /* entries typed on top of the PDF (Preview / Acrobat text boxes, form fields) live in annotations, not page text */
+    let ann=[];try{ann=(await page.getAnnotations()).map(a=>{const v=String((a.contentsObj&&a.contentsObj.str)||a.fieldValue||a.textContent&&a.textContent.join(" ")||"").trim();
+      if(!v||!a.rect||!/FreeText|Widget|Text/.test(a.subtype||""))return null;const [x1,y1,x2,y2]=a.rect;return{t:v,x0:Math.min(x1,x2),x1:Math.max(x1,x2),cy:vp.height-(y1+y2)/2,annot:true};}).filter(Boolean);}catch(e){}
     const items=tc.items.filter(it=>it.str&&it.str.trim());
     if(items.map(i=>i.str).join("").replace(/\s/g,"").length>20){
       const words=[];items.forEach(it=>{const x=it.transform[4],y=vp.height-it.transform[5],h=Math.abs(it.transform[3])||it.height||10;
         const parts=it.str.split(/(\s+)/);let cx=x;const cw=(it.width||0)/Math.max(1,it.str.length);
         parts.forEach(p=>{if(p.trim())words.push({t:p.trim(),x0:cx,y0:y-h,x1:cx+p.length*cw,y1:y});cx+=p.length*cw;});});
-      pages.push({width:vp.width,words});
+      pages.push({width:vp.width,words,annots:ann.map(a=>annotWords(a,1))});
     }else{scanned=true;
       const scale=Math.min(3,2400/vp.width);const v2=page.getViewport({scale});const c=document.createElement("canvas");c.width=Math.round(v2.width);c.height=Math.round(v2.height);
       await page.render({canvasContext:c.getContext("2d"),viewport:v2,canvas:c}).promise;
       const w=await ocrWorker(progress);progress&&progress("Recognizing text on page "+n+" of "+doc.numPages+"… (scanned page)");
       const {data}=await w.recognize(c,{},{blocks:true,text:true});
-      pages.push({width:c.width,words:tessWords(data).map(x=>({t:x.text,x0:x.bbox.x0,y0:x.bbox.y0,x1:x.bbox.x1,y1:x.bbox.y1,conf:x.confidence}))});}
+      pages.push({width:c.width,words:tessWords(data).map(x=>({t:x.text,x0:x.bbox.x0,y0:x.bbox.y0,x1:x.bbox.x1,y1:x.bbox.y1,conf:x.confidence})),annots:ann.map(a=>annotWords(a,scale))});}
   }
   return{pages,scanned,numPages:doc.numPages};}
 async function read(file,progress){const r=await pagesOf(file,progress);const out=parse(r.pages);out.scanned=r.scanned;out.pages=r.numPages;return out;}
@@ -92,19 +106,19 @@ async function readUnitSheets(file,sections,progress){const r=await pagesOf(file
 /* ---- filled Crew Daily Unit Checklist pages -> sheet entries ---- */
 const nm=s=>String(s||"").toLowerCase().replace(/&/g," and ").replace(/[^a-z0-9.]+/g," ").replace(/\s+/g," ").trim();
 const NUM=/^\d+(\.\d+)?$/;
-function valuesBelow(ls,li,anchors,tol){
-  /* anchors: [{key,x}] from a label line; value = words on the next line(s) before the next label line */
-  const out={};anchors.forEach(a=>out[a.key]="");const cols=anchors.slice().sort((a,b)=>a.x-b.x);
-  for(let k=li+1;k<ls.length&&k<=li+2;k++){const L=ls[k];const txt=nm(L.words.map(w=>w.t).join(" "));
-    if(/ticket id|vz pole|pole set|pole top configuration|location|work order/.test(txt)&&k>li+1)break;
-    if(k>li+1&&Object.values(out).some(Boolean))break;
-    L.words.forEach(w=>{let col=null;for(const c of cols){if(w.x0>=c.x-tol)col=c;}if(col)out[col.key]=(out[col.key]?out[col.key]+" ":"")+clean(w.t);});}
+function valuesBelow(ls,li,anchors,tol,width){
+  /* anchors: [{key,x}] from a label line; values = every line under it until the next label line (typed boxes may sit on their own line) */
+  const out={};anchors.forEach(a=>out[a.key]="");const cols=anchors.slice().sort((a,b)=>a.x-b.x);const maxGap=(width||600)*0.06;
+  for(let k=li+1;k<ls.length;k++){const L=ls[k];const txt=nm(L.words.map(w=>w.t).join(" "));
+    if(/ticket id|vz pole|pole set|pole top configuration|pole location|work order|crew lead/.test(txt))break;
+    if(L.cy-ls[li].cy>maxGap)break;
+    L.words.forEach(w=>{let col=null;for(const c of cols){if(w.x0>=c.x-tol)col=c;}if(!col&&w.annot)col=cols[0];if(col)out[col.key]=(out[col.key]?out[col.key]+" ":"")+clean(w.t);});}
   return out;}
 function parseUnitSheets(pages,sections){
   const res=[];
   const secIdx=new Map(sections.map(s=>[nm(s[0]),s]));
   pages.forEach((pg,pi)=>{
-    const ls=lines(pg.words,0.5);const tol=pg.width*0.01;const mid=pg.width/2;
+    const ls=withAnnots(pg,0.5);const tol=pg.width*0.01;const mid=pg.width/2;
     const txt=L=>L.words.map(w=>clean(w.t)).join(" ");
     const all=nm(ls.map(txt).join(" "));
     if(!/unit checklist/.test(all)||!/pole top configuration/.test(all))return;
@@ -115,14 +129,14 @@ function parseUnitSheets(pages,sections){
       e.awc=L.words.slice(k+1).filter(left).map(w=>clean(w.t)).join(" ").replace(/^_+|_+$/g,"").trim();
       const nx=ls[aw+1];if(!e.awc&&nx&&!/\bdate\b/.test(nm(txt(nx))))e.awc=nx.words.filter(left).map(w=>clean(w.t)).join(" ").trim();}
     const l1=findLine(/\bdate\b.*crew.*lead.*work order/);
-    if(l1>=0){const L=ls[l1];const an=[["date","date"],["crew","crew lead"],["wo","work order"],["fwo","fwo"]].map(([k,lab])=>({key:k,x:anchorOf(L,lab)})).filter(a=>a.x!=null);Object.assign(e,valuesBelow(ls,l1,an,tol));}
+    if(l1>=0){const L=ls[l1];const an=[["date","date"],["crew","crew lead"],["wo","work order"],["fwo","fwo"]].map(([k,lab])=>({key:k,x:anchorOf(L,lab)})).filter(a=>a.x!=null);Object.assign(e,valuesBelow(ls,l1,an,tol,pg.width));}
     const l2=findLine(/pole location.*pole set/);
-    if(l2>=0){const L=ls[l2];const an=[["pole","pole location"],["poleSet","pole set"]].map(([k,lab])=>({key:k,x:anchorOf(L,lab)})).filter(a=>a.x!=null);const v=valuesBelow(ls,l2,an,tol);e.pole=v.pole||"";
-      const psx=(an.find(a=>a.key==="poleSet")||{}).x;const vl=ls[l2+1];
-      if(psx!=null&&vl){const ps=vl.words.filter(w=>w.x0>=psx-tol).map(w=>String(w.t)).join("").toUpperCase().replace(/\s+/g,"");
+    if(l2>=0){const L=ls[l2];const an=[["pole","pole location"],["poleSet","pole set"]].map(([k,lab])=>({key:k,x:anchorOf(L,lab)})).filter(a=>a.x!=null);const v=valuesBelow(ls,l2,an,tol,pg.width);e.pole=v.pole||"";
+      const psx=(an.find(a=>a.key==="poleSet")||{}).x;const vls=ls.slice(l2+1).filter(L=>L.cy-ls[l2].cy<=pg.width*0.06);
+      if(psx!=null&&vls.length){const ps=[].concat.apply([],vls.map(L=>L.words)).sort((a,b)=>a.x0-b.x0).filter(w=>w.x0>=psx-tol).map(w=>String(w.t)).join("").toUpperCase().replace(/\s+/g,"");
         e.poleSet=/[X✓✔☒]\]?YES/.test(ps)?"yes":/[X✓✔☒]\]?NO/.test(ps)?"no":"";}}
     const l3=findLine(/ticket id.*vz pole/);
-    if(l3>=0){const L=ls[l3];const an=[["ticket","ticket id"],["vz","vz pole"],["locNo","location"],["pdf","pdf page"]].map(([k,lab])=>({key:k,x:anchorOf(L,lab)})).filter(a=>a.x!=null);const v=valuesBelow(ls,l3,an,tol);e.ticket=(v.ticket||"").replace(/\s/g,"").toUpperCase();e.vz=v.vz||"";e.locNo=v.locNo||"";}
+    if(l3>=0){const L=ls[l3];const an=[["ticket","ticket id"],["vz","vz pole"],["locNo","location"],["pdf","pdf page"]].map(([k,lab])=>({key:k,x:anchorOf(L,lab)})).filter(a=>a.x!=null);const v=valuesBelow(ls,l3,an,tol,pg.width);e.ticket=(v.ticket||"").replace(/\s/g,"").toUpperCase();e.vz=v.vz||"";e.locNo=v.locNo||"";}
     /* unit rows: two columns, each with a section context and a QTY column position */
     const ctx={L:null,R:null},qx={L:null,R:null};let notesAt=-1;
     for(let k=Math.max(l3,0)+1;k<ls.length;k++){const Lw=ls[k];const t=nm(txt(Lw));
