@@ -1230,7 +1230,7 @@ function ublStage(s){
   if(s.status===ST.INV){const inv=s.invoiceId&&S.docs.get(s.invoiceId);if(!inv||inv.status==="Draft")return"draft";return null;}
   return null;}
 function ublRows(from,to){
-  return sheets().filter(s=>{const st=ublStage(s);if(!st)return false;if(!from&&!to)return true;if(!s.workDate)return true;return(!from||s.workDate>=from)&&(!to||s.workDate<=to);})
+  return sheets().filter(s=>{const st=ublStage(s);if(!st)return false;const jj=jobById(s.jobId);if(jj&&jj.test)return false;if(!from&&!to)return true;if(!s.workDate)return true;return(!from||s.workDate>=from)&&(!to||s.workDate<=to);})
     .map(s=>{const pr=priceSheet(s);const j=jobById(s.jobId);const inv=s.invoiceId&&S.docs.get(s.invoiceId);
       return{s,stage:ublStage(s),amount:pr.total,errs:pr.errs,job:j,area:pr.area,inv};})
     .sort((a,b)=>String(a.job?a.job.name:"").localeCompare(String(b.job?b.job.name:""))||String(a.s.workDate||"9").localeCompare(String(b.s.workDate||"9"))||String(a.s.no).localeCompare(String(b.s.no)));}
@@ -1306,7 +1306,7 @@ function renderOverview(){
   tb.innerHTML=list.length?list.map(j=>{const st=jobStats(j,ss);const pct=st.locs?st.doneLocs/st.locs:0;
     return'<tr tabindex="0" data-id="'+esc(j.id)+'"><td><div class="job-name">'+esc(j.name)+'</div><div class="sub">'+esc([j.wo?"WO "+j.wo:"",j.town||"",j.gf?"CM "+j.gf:""].filter(Boolean).join(" · ")||j.desc)+"</div></td><td>"+esc(j.customer)+'</td><td class="mono">'+esc(j.po)+'</td><td class="mono">'+st.locs+'</td><td><div class="bar"><div class="track"><div class="fill" style="width:'+Math.round(pct*100)+'%"></div></div><span class="pct">'+st.doneLocs+"/"+st.locs+'</span></div><div class="sub">'+st.started+" started</div></td>"+
       '<td class="mono">'+(st.sub||"")+'</td><td class="mono">'+(st.gf||"")+'</td><td class="mono">'+(st.ok||"")+"</td>"+(can.seePrice()?'<td class="mono num">'+(st.ok+st.inv?(st.apprOk?money(st.appr):'<span class="sub">Check pricing</span>'):"")+"</td>":"")+
-      "<td>"+(j.archived?'<span class="chip c-stage">Closed</span>':'<span class="chip c-done">Active</span>')+(st.ret?' <span class="chip c-bad">'+st.ret+" returned</span>":"")+(st.hold?' <span class="chip c-bad">'+st.hold+" on hold</span>":"")+"</td></tr>";}).join("")
+      "<td>"+(j.test?'<span class="chip c-sch">Example</span> ':"")+(j.archived?'<span class="chip c-stage">Closed</span>':'<span class="chip c-done">Active</span>')+(st.ret?' <span class="chip c-bad">'+st.ret+" returned</span>":"")+(st.hold?' <span class="chip c-bad">'+st.hold+" on hold</span>":"")+"</td></tr>";}).join("")
     :'<tr><td colspan="10"><div class="empty"><b>No jobs yet</b>'+(can.setup()?'Use <a href="#addjob">Add Job</a> to set up the first job and its locations.':"Billing sets up jobs before crews can log units.")+"</div></td></tr>";
   bindRows(tb,id=>location.hash="job-"+id);
   main.querySelectorAll(".tbtn").forEach(b=>b.onclick=()=>{S.f.status=b.dataset.st;S.f.job="";location.hash="sheets";});
@@ -1633,14 +1633,14 @@ function renderAddJobForm(){
   if(!can.setup()){location.hash="addjob";return;}
   const st=S.addJob||(S.addJob={rows:[],start:1,f:blankJob(),pkg:true});
   main.innerHTML='<a class="back" href="#addjob">← Add Job</a><section class="jobhead"><div><h1>New job</h1><div class="meta">Enter the job details, then upload the job package to fill in the locations (or upload a spreadsheet, paste, or type them).</div></div></section>'+
-    '<section class="details" style="display:block"><fieldset style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))"><legend>Job</legend>'+jobFieldsHtml("aj",st.f)+"</fieldset></section>"+
+    '<section class="details" style="display:block"><fieldset style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))"><legend>Job</legend>'+jobFieldsHtml("aj",st.f)+'<label class="f chk wide" for="aj-test"><input type="checkbox" id="aj-test"'+(st.test?" checked":"")+"> Test / example job — never counted in the UBL</label></fieldset></section>"+
     '<h2 class="sec">Job package &amp; locations</h2><div id="aj-grid"></div>'+
     '<div class="row-inline" style="justify-content:flex-end;margin-top:4px"><span class="err" id="aj-err" role="alert" style="margin:0 auto 0 0"></span><button class="btn" type="button" id="aj-cancel">Cancel</button><button class="btn primary" type="button" id="aj-save">Create job</button></div>';
   main.querySelectorAll("[id^=aj-]").forEach(el=>{if(!/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)||el.closest("#aj-grid"))return;const ev=el.tagName==="SELECT"?"onchange":"oninput";el[ev]=()=>{st.f[el.id.slice(3)]=el.value;};});
   locGrid(document.getElementById("aj-grid"),st);
   document.getElementById("aj-cancel").onclick=()=>{const dirty=st.rows.length||st.f.name||st.pkgFile;if(dirty&&!confirm("Discard this job?"))return;S.addJob=null;location.hash="addjob";};
   document.getElementById("aj-save").onclick=async e=>{const err=document.getElementById("aj-err");err.textContent="";const b=e.target;
-    const v=readJobFields(main,"aj");const fe=jobFieldErr(v);if(fe){err.textContent=fe;return;}
+    const v=readJobFields(main,"aj");const fe=jobFieldErr(v);if(fe){err.textContent=fe;return;}v.test=!!document.getElementById("aj-test").checked;
     const c=checkLocs(st.rows,[]);if(c.errs.length){err.textContent=c.errs.slice(0,3).join(" ")+(c.errs.length>3?" (+"+(c.errs.length-3)+" more)":"");return;}
     if(!c.used.length&&!confirm("Create the job with no locations? You can add them later."))return;
     if(!canSave())return;b.disabled=true;
@@ -1669,19 +1669,19 @@ function renderJobEdit(){
   const j=jobById(S.docId);
   if(!can.setup()||!j){main.innerHTML='<a class="back" href="#addjob">← Add Job</a><div class="empty"><b>'+(j?"Only billing can edit jobs":"Job not found")+"</b></div>";return;}
   if(!S.jobEdit||S.jobEdit.id!==j.id){const sx=sheets().filter(s=>s.jobId===j.id);
-    S.jobEdit={id:j.id,f:Object.assign(blankJob(),j),archived:!!j.archived,orig:(j.poles||[]).map(p=>p.id),start:(j.poles||[]).reduce((a,p)=>Math.max(a,p.n||0),0)+1,bulk:true,pkg:true,existing:[],
+    S.jobEdit={id:j.id,f:Object.assign(blankJob(),j),archived:!!j.archived,test:!!j.test,orig:(j.poles||[]).map(p=>p.id),start:(j.poles||[]).reduce((a,p)=>Math.max(a,p.n||0),0)+1,bulk:true,pkg:true,existing:[],
       rows:(j.poles||[]).slice().sort((a,b)=>(a.n||0)-(b.n||0)).map(p=>{const n=sx.filter(s=>s.poleId===p.id).length;return Object.assign(emptyLoc(),{ticket:p.ticket||"",town:p.town||"",street:p.street||"",esPole:p.esPole||"",vzPole:p.vzPole||"",pdfPage:p.pdfPage||"",woJob:p.woJob||"",area:p.area||"",dateSet:p.dateSet||"",notes:p.notes||"",_id:p.id,_n:p.n,_locked:n?n+" unit sheet(s) are logged here, so it can't be removed":""});})};}
   const st=S.jobEdit;
   main.innerHTML='<a class="back" href="#job-'+esc(j.id)+'">← '+esc(j.name)+'</a><section class="jobhead"><div><h1>Edit job</h1><div class="meta">Change the job details, pricing area, WO, and any location. Add rows for new locations, or remove ones that have no unit sheets (🔒 = has sheets). Nothing changes until you click Save changes.</div></div></section>'+
-    '<section class="details" style="display:block"><fieldset style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))"><legend>Job</legend>'+jobFieldsHtml("je",st.f)+'<label class="f chk" for="je-arch"><input type="checkbox" id="je-arch"'+(st.archived?" checked":"")+"> Closed (hide from crews)</label></fieldset></section>"+
+    '<section class="details" style="display:block"><fieldset style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))"><legend>Job</legend>'+jobFieldsHtml("je",st.f)+'<label class="f chk" for="je-arch"><input type="checkbox" id="je-arch"'+(st.archived?" checked":"")+"> Closed (hide from crews)</label>"+'<label class="f chk" for="je-test"><input type="checkbox" id="je-test"'+(st.test?" checked":"")+"> Test / example job — never counted in the UBL</label></fieldset></section>"+
     '<h2 class="sec">Locations</h2><div id="je-grid"></div>'+
     '<div class="row-inline" style="justify-content:flex-end;margin-top:4px"><span class="err" id="je-err" role="alert" style="margin:0 auto 0 0"></span><button class="btn" type="button" id="je-cancel">Cancel</button><button class="btn primary" type="button" id="je-save">Save changes</button></div>';
-  main.querySelectorAll("[id^=je-]").forEach(el=>{if(!/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)||el.id==="je-arch")return;el[el.tagName==="SELECT"?"onchange":"oninput"]=()=>{st.f[el.id.slice(3)]=el.value;};});
-  document.getElementById("je-arch").onchange=e=>{st.archived=e.target.checked;};
+  main.querySelectorAll("[id^=je-]").forEach(el=>{if(!/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)||el.id==="je-arch"||el.id==="je-test")return;el[el.tagName==="SELECT"?"onchange":"oninput"]=()=>{st.f[el.id.slice(3)]=el.value;};});
+  document.getElementById("je-arch").onchange=e=>{st.archived=e.target.checked;};document.getElementById("je-test").onchange=e=>{st.test=e.target.checked;};
   locGrid(document.getElementById("je-grid"),st);
   document.getElementById("je-cancel").onclick=()=>{S.jobEdit=null;location.hash="job-"+j.id;};
   document.getElementById("je-save").onclick=async e=>{const err=document.getElementById("je-err");err.textContent="";const b=e.target;
-    const v=readJobFields(main,"je");const fe=jobFieldErr(v,j.id);if(fe){err.textContent=fe;return;}v.archived=st.archived;
+    const v=readJobFields(main,"je");const fe=jobFieldErr(v,j.id);if(fe){err.textContent=fe;return;}v.archived=st.archived;v.test=st.test;
     const c=checkLocs(st.rows,[]);if(c.errs.length){err.textContent=c.errs.slice(0,3).join(" ")+(c.errs.length>3?" (+"+(c.errs.length-3)+" more)":"");return;}
     const keep=st.rows.filter(L=>Object.keys(L).some(k=>k[0]!=="_"&&String(L[k]).trim()));
     const keptIds=new Set(keep.map(L=>L._id).filter(Boolean));const removed=st.orig.filter(id=>!keptIds.has(id));
@@ -1692,7 +1692,7 @@ function renderJobEdit(){
     try{let pk=null;if(st.pkgFile){b.textContent="Uploading package…";pk=await storePackage(st.pkgFile);}
       b.textContent="Saving…";const now=new Date().toISOString();const FIELDS=["ticket","town","street","esPole","vzPole","pdfPage","woJob","area","dateSet","notes"];
       const summary=await commitIndex(ix=>{const t=(ix.jobs||[]).find(x=>x.id===j.id);if(!t)throw new Error("This job was removed by someone else.");
-        const changed=JOB_FIELDS.map(f=>f[0]).filter(k=>String(t[k]==null?"":t[k])!==v[k]);if(!!t.archived!==v.archived)changed.push(v.archived?"closed":"reopened");
+        const changed=JOB_FIELDS.map(f=>f[0]).filter(k=>String(t[k]==null?"":t[k])!==v[k]);if(!!t.archived!==v.archived)changed.push(v.archived?"closed":"reopened");if(!!t.test!==v.test)changed.push(v.test?"marked as test job":"unmarked as test job");
         Object.assign(t,v,{updatedAt:now,updatedBy:S.me.name});
         const byId=new Map((t.poles||[]).map(p=>[p.id,p]));let n=(t.poles||[]).reduce((a,p)=>Math.max(a,p.n||0),0);let upd=0,add=0;const out=[];
         keep.forEach((L,i)=>{const cl={};FIELDS.forEach(k=>cl[k]=String(L[k]==null?"":L[k]).trim());
