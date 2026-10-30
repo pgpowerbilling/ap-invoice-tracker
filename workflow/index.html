@@ -208,6 +208,14 @@ tfoot td{background:var(--info-bg);border-top:2px solid var(--navy)}
 .tabs a[hidden]{display:none}
 .tabs a .ct:empty{display:none}
 [hidden]{display:none!important}
+.ph-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.ph-slot,.ph-fig{border:1px solid var(--line);border-radius:6px;padding:10px;background:var(--panel);display:flex;flex-direction:column;gap:8px;margin:0}
+.ph-h,.ph-fig figcaption{font-size:14px;color:var(--navy)}
+.ph-frame{aspect-ratio:4/3;background:var(--bg);border:1px dashed var(--field);border-radius:4px;display:grid;place-items:center;overflow:hidden}
+.ph-frame img,.ph-fig img{width:100%;height:100%;object-fit:cover;display:block}
+.ph-fig a{display:block;aspect-ratio:4/3;border-radius:4px;overflow:hidden;background:var(--bg)}
+.ph-empty{color:var(--muted);font-size:13px;padding:8px;text-align:center}
+.ph-big{max-width:100%;max-height:70vh;object-fit:contain;border-radius:4px;align-self:center}
 body:not(.crewonly) .crew-only{display:none!important}
 .sigbox{display:flex;gap:12px;align-items:flex-start;border:2px dashed var(--navy);border-radius:6px;padding:12px 14px;background:var(--info-bg);cursor:pointer;font-size:14.5px}
 .sigbox input{width:22px;height:22px;margin-top:2px;flex:none}
@@ -1055,7 +1063,8 @@ function renderSheet(){
       (p?dl("Ticket ID",esc(p.ticket))+dl("VZ pole #",esc(p.vzPole))+dl("Pricing area",esc(poleArea(j,p))||'<span class="late">Not set</span>'):"")+
       dl("Submitted",esc(d.createdBy+" · "+fmtT(d.submittedAt||d.createdAt)))+dl("GF signature",d.gfAt?'<span class="sig">✔ Approved by '+esc(d.gfBy)+"</span> · "+esc(fmtT(d.gfAt)):"")+(d.billAt?dl("Billing approval",esc(d.billBy+" · "+fmtT(d.billAt))):"")+(can.seePrice()?dl("Invoice",esc(d.invoiceNo||"")):"")+
       (d.source?dl("Uploaded from",'<button class="btn sm" type="button" id="a-src">'+esc(d.source.name)+"</button> page "+esc(d.source.page)):"")+(d.notes?dl("Notes / extras / difficulty justification",esc(d.notes),true):"")+(d.gfNote?dl("GF note",esc(d.gfNote),true):"")+(d.billNote?dl("Billing note",esc(d.billNote),true):"")+"</section>"+
-    '<h2 class="sec">Units</h2>'+sheetLinesHtml(d)+'<h2 class="sec">History</h2>'+histHtml(d);
+    '<h2 class="sec">Units</h2>'+sheetLinesHtml(d)+'<h2 class="sec">Photos</h2>'+photosSectionHtml(d)+'<h2 class="sec">History</h2>'+histHtml(d);
+  fillPhotoImgs(main);main.querySelectorAll("[data-open-photo]").forEach(a=>a.onclick=ev=>{ev.preventDefault();openPhoto(d,a.dataset.openPhoto);});
   const on=(sel,fn)=>{const b=document.getElementById(sel);if(b)b.onclick=fn;};
   const guard=want=>x=>{if(x.status!==want)throw new Error("This sheet was already moved to "+(ST_LABEL[x.status]||x.status)+" by someone else.");};
   on("a-edit",()=>openSheetForm(id));on("a-src",()=>openPackage(d.source,document.getElementById("a-src")));
@@ -1069,6 +1078,54 @@ function renderSheet(){
   on("a-reopen",()=>confirmBox("Send "+d.no+" back to the GF?","The GF signature is removed and the sheet returns to Awaiting GF signature.","Send back",async n=>{await commitDoc(id,x=>{if(!isReady(x))throw new Error("This sheet was already moved by someone else.");x.status=ST.SUB;x.gfAt="";x.gfBy="";x.gfSig=null;x.billAt="";x.billBy="";},"Sent back to the GF: "+n);},{note:"Reason",noteReq:true}));
 }
 
+
+/* ---------- before / after photos (encrypted, stored in data/files) ---------- */
+const PHOTO_MAX_SIDE=1280,PHOTO_Q=0.72,PHOTO_KINDS=[["before","Before"],["after","After"]];
+const photoCache=new Map();
+const needPhotos=()=>role()==="crew";
+async function decodeImage(file){
+  try{return await createImageBitmap(file,{imageOrientation:"from-image"});}catch(e){}
+  return await new Promise((res,rej)=>{const u=URL.createObjectURL(file);const im=new Image();im.onload=()=>res(im);im.onerror=()=>rej(new Error("That photo couldn't be opened. Use a JPEG or PNG photo."));im.src=u;});}
+async function shrinkPhoto(file){
+  if(!/^image\//.test(file.type||"image/"))throw new Error("Choose a photo.");
+  const im=await decodeImage(file);const w0=im.width||im.naturalWidth,h0=im.height||im.naturalHeight;
+  const k=Math.min(1,PHOTO_MAX_SIDE/Math.max(w0,h0));const w=Math.round(w0*k),h=Math.round(h0*k);
+  const c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(im,0,0,w,h);
+  const blob=await new Promise(r=>c.toBlob(r,"image/jpeg",PHOTO_Q));if(!blob)throw new Error("That photo couldn't be processed.");
+  return{blob,w,h,taken:file.lastModified?new Date(file.lastModified).toISOString():""};}
+async function storePhoto(p,kind){
+  const name="photo-"+hexId(8)+".enc.json";
+  await ghPut("data/files/"+name,JSON.stringify(await encJson(S.dek,{type:"image/jpeg",b64:b64(await p.blob.arrayBuffer())})),null,"Workflow: store photo");
+  photoCache.set(name,URL.createObjectURL(p.blob));
+  return{file:name,kind,w:p.w,h:p.h,size:p.blob.size,taken:p.taken,at:new Date().toISOString(),by:S.me.name};}
+async function photoUrl(meta){
+  if(!meta||!meta.file)return null;if(photoCache.has(meta.file))return photoCache.get(meta.file);
+  let box;if(hasToken()){const f=await ghGet("data/files/"+meta.file);if(!f)throw new Error("Photo missing.");box=JSON.parse(f.text);}else box=await pagesGet("data/files/"+meta.file);
+  const o=await decJson(S.dek,box);const u=URL.createObjectURL(new Blob([unb64(o.b64)],{type:o.type||"image/jpeg"}));photoCache.set(meta.file,u);return u;}
+function fillPhotoImgs(root){root.querySelectorAll("img[data-photo]").forEach(async img=>{try{const m=JSON.parse(img.dataset.photo);const u=await photoUrl(m);if(u){img.src=u;img.classList.add("ok");}}catch(e){img.alt="Photo couldn't load";img.classList.add("bad");}});}
+const photoBadges=d=>PHOTO_KINDS.map(([k,l])=>d.photos&&d.photos[k]?'<span class="chip c-done">'+l+" ✓</span>":'<span class="chip c-bad">No '+l.toLowerCase()+"</span>").join(" ");
+/* form slots: slots = {before:{meta,blob,url}, after:{…}} */
+function photoSlotsHtml(pre,req){
+  return'<div class="ph-grid">'+PHOTO_KINDS.map(([k,l])=>'<div class="ph-slot" data-kind="'+k+'"><div class="ph-h"><b>'+l+' photo</b>'+(req?' <span class="sub">required</span>':"")+'</div><div class="ph-frame"><img alt="'+l+' photo" hidden><span class="ph-empty">No '+l.toLowerCase()+' photo yet</span></div>'+
+    '<div class="row-inline"><label class="btn sm primary" style="cursor:pointer">Take photo<input type="file" accept="image/*" capture="environment" data-ph="'+k+'" hidden></label><label class="btn sm" style="cursor:pointer">From photos<input type="file" accept="image/*" data-ph="'+k+'" hidden></label><span class="sub" data-phst="'+k+'"></span></div></div>').join("")+"</div>";}
+function bindPhotoSlots(root,slots){
+  const show=k=>{const s=slots[k],box=root.querySelector('.ph-slot[data-kind="'+k+'"]');const img=box.querySelector("img"),em=box.querySelector(".ph-empty");
+    const set=u=>{img.src=u;img.hidden=false;em.hidden=true;};
+    if(s.url)set(s.url);else if(s.meta){em.textContent="Loading…";photoUrl(s.meta).then(u=>{if(u&&!s.url)set(u);}).catch(()=>{em.textContent="Photo couldn't load";});}
+    else{img.hidden=true;em.hidden=false;}};
+  root.querySelectorAll("input[data-ph]").forEach(inp=>inp.onchange=async ev=>{const f=ev.target.files[0];ev.target.value="";if(!f)return;const k=inp.dataset.ph;const st=root.querySelector('[data-phst="'+k+'"]');st.textContent="Processing…";
+    try{const p=await shrinkPhoto(f);slots[k].blob=p;if(slots[k].url&&!photoCache.has(slots[k].url))URL.revokeObjectURL(slots[k].url);slots[k].url=URL.createObjectURL(p.blob);st.textContent="Ready ("+Math.round(p.blob.size/1024)+" KB)";show(k);}
+    catch(e){st.textContent="";toast(errText(e),7000);}});
+  PHOTO_KINDS.forEach(([k])=>show(k));}
+function photosMissing(slots){return PHOTO_KINDS.filter(([k])=>!(slots[k].blob||slots[k].meta)).map(([,l])=>l.toLowerCase());}
+async function savePhotos(slots){const out={};for(const [k] of PHOTO_KINDS){const s=slots[k];if(s.blob)out[k]=await storePhoto(s.blob,k);else if(s.meta)out[k]=s.meta;}return out;}
+function photosSectionHtml(d){
+  return'<div class="ph-grid">'+PHOTO_KINDS.map(([k,l])=>{const m=d.photos&&d.photos[k];
+    return'<figure class="ph-fig"><figcaption><b>'+l+"</b>"+(m?' <span class="sub">'+esc(m.by)+" · "+esc(fmtT(m.at))+"</span>":"")+"</figcaption>"+(m?'<a href="#" data-open-photo="'+k+'"><img data-photo="'+esc(JSON.stringify(m))+'" alt="'+l+' photo"></a>':'<div class="ph-frame"><span class="ph-empty">No '+l.toLowerCase()+" photo</span></div>")+"</figure>";}).join("")+"</div>";}
+function openPhoto(d,k){const m=d.photos&&d.photos[k];if(!m)return;
+  const mm=modal((k==="before"?"Before":"After")+" photo — "+d.no+" · "+sheetPoleText(d),'<img class="ph-big" alt="'+(k==="before"?"Before":"After")+' photo" data-photo="'+esc(JSON.stringify(m))+'"><p class="sub" style="margin:0">Taken '+esc(m.taken?fmtT(m.taken):"—")+" · added by "+esc(m.by)+" "+esc(fmtT(m.at))+"</p>",'<button class="btn" type="button" id="ph-dl">Download</button><button class="btn primary" type="button" data-x>Close</button>',"wide");
+  fillPhotoImgs(mm);mm.querySelector("#ph-dl").onclick=async()=>{try{const u=await photoUrl(m);const a=document.createElement("a");a.href=u;a.download=d.no+"-"+k+".jpg";document.body.appendChild(a);a.click();a.remove();}catch(e){toast(errText(e));}};}
+
 /* ---------- crew daily unit sheet form (matches the paper checklist) ---------- */
 function openSheetForm(id,presetJob){
   if(id==null&&!can.newSheet()){canSave();return;}
@@ -1081,7 +1138,7 @@ function openSheetForm(id,presetJob){
   const qty={};const notes={};(d.lines||[]).forEach(l=>{qty[l.key]=l.qty;notes[l.key]=l.note||"";});
   const others=(d.lines||[]).filter(l=>!CREW_KEYS.has(l.key)).map(l=>({key:l.key,qty:l.qty,note:l.note||""}));
   const otherUnits=(rates()?rates().units:[]).filter(u=>!CREW_KEYS.has(u.key));
-  const sec=CREW_SECTIONS.map(s=>'<div class="cl-sec"><div class="cl-h"><span>'+esc(s[0])+'</span><span>Qty</span></div>'+s[1].map(it=>'<label class="cl-row"><span>'+esc(it[1])+(it[0]===CK?' <span class="sub">(no rate on file)</span>':"")+'</span><input type="number" inputmode="decimal" step="any" min="0" data-q="'+esc(it[0])+'" value="'+esc(qty[it[0]]==null?"":qty[it[0]])+'" aria-label="'+esc(s[0]+" — "+it[1])+' quantity"></label>').join("")+"</div>").join("");
+  const sec=CREW_SECTIONS.map(s=>'<div class="cl-sec"><div class="cl-h"><span>'+esc(s[0])+'</span><span>Qty</span></div>'+s[1].map(it=>'<label class="cl-row"><span>'+esc(it[1])+(it[0]===CK&&can.seePrice()?' <span class="sub">(no rate on file)</span>':"")+'</span><input type="number" inputmode="decimal" step="any" min="0" data-q="'+esc(it[0])+'" value="'+esc(qty[it[0]]==null?"":qty[it[0]])+'" aria-label="'+esc(s[0]+" — "+it[1])+' quantity"></label>').join("")+"</div>").join("");
   const body='<fieldset><legend>Sheet header</legend>'+
     '<label class="f" for="sf-date">Date<input type="date" id="sf-date" value="'+esc(d.workDate)+'"></label>'+
     '<label class="f" for="sf-crew">Crew / lead<input id="sf-crew" value="'+esc(d.crew)+'"></label>'+
@@ -1095,8 +1152,10 @@ function openSheetForm(id,presetJob){
     '<label class="f wide" for="sf-ptxt" id="sf-ptxt-w" hidden>Pole not on the packet list — describe it<input id="sf-ptxt" value="'+esc(d.poleText)+'"></label></fieldset>'+
     '<div><div class="sec-h">Units completed at this pole</div><p class="sub" style="margin:-4px 0 8px">Enter a quantity only beside units actually performed. Leave the rest blank.</p><div class="cl-grid">'+sec+"</div></div>"+
     '<div><div class="sec-h">Other units</div><div id="sf-other" class="linelist"></div><button class="btn" type="button" id="sf-add-o" style="margin-top:8px">+ Add another unit</button></div>'+
+    '<div><div class="sec-h">Photos of the location</div>'+photoSlotsHtml("sf",needPhotos())+"</div>"+
     '<label class="f wide" for="sf-notes">Notes / extras / difficulty justification<textarea id="sf-notes">'+esc(d.notes)+"</textarea></label>";
   const m=modal(id?"Edit "+d.no:"Crew daily unit sheet",body,'<button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="sf-save">'+(id?(d.status===ST.RET?"Save &amp; resubmit":"Save changes"):"Submit to GF")+"</button>","wide");
+  const slots={before:{meta:d.photos&&d.photos.before||null},after:{meta:d.photos&&d.photos.after||null}};bindPhotoSlots(m,slots);
   const pq=m.querySelector("#sf-pq"),pbox=m.querySelector("#sf-poles"),jsel=m.querySelector("#sf-job");
   let selPole=d.poleId,notOnList=!d.poleId&&!!d.poleText;
   function drawPoles(){const j=jobById(jsel.value);const ps=(j&&j.poles)||[];const q=pq.value.trim().toLowerCase();
@@ -1126,12 +1185,16 @@ function openSheetForm(id,presetJob){
       if(lines.some(l=>l.key===o.key))throw new Error(unitInfo(o.key).item+" is entered twice.");lines.push({key:o.key,qty:q,note:String(o.note||"").trim()});}
     if(!lines.length)throw new Error("Enter at least one unit quantity.");
     patch.lines=lines;
+    const miss=photosMissing(slots);if(needPhotos()&&miss.length)throw new Error("Add the "+miss.join(" and ")+" photo"+(miss.length>1?"s":"")+" before submitting.");
+    if(!canSave())return;
+    if(slots.before.blob||slots.after.blob)e.target.textContent="Uploading photos…";
+    patch.photos=await savePhotos(slots);e.target.textContent="Saving…";
     if(!id){
       patch.status=ST.SUB;patch.submittedAt=new Date().toISOString();
-      const nid=await createDoc("sheet",patch,"Submitted "+lines.length+" unit line(s)");if(nid){closeOverlay();toast("Sheet submitted to the GF");location.hash="sheet-"+nid;}
+      const nid=await createDoc("sheet",patch,"Submitted "+lines.length+" unit line(s)"+(patch.photos.before||patch.photos.after?" with "+[patch.photos.before?"before":"",patch.photos.after?"after":""].filter(Boolean).join(" and ")+" photo":""));if(nid){closeOverlay();toast("Sheet submitted to the GF");location.hash="sheet-"+nid;}
     }else{
       const ch=diffLines(src.lines,lines);const resub=src.status===ST.RET;
-      const ok=await commitDoc(id,x=>{if(x.status===ST.INV)throw new Error("This sheet is already invoiced.");Object.assign(x,patch);if(x.status===ST.RET){x.status=ST.SUB;x.submittedAt=new Date().toISOString();}},(resub?"Fixed and resubmitted. ":"Edited. ")+(ch||"No unit changes."));
+      const ok=await commitDoc(id,x=>{if(x.status===ST.INV)throw new Error("This sheet is already invoiced.");Object.assign(x,patch);if(x.status===ST.RET){x.status=ST.SUB;x.submittedAt=new Date().toISOString();}},(resub?"Fixed and resubmitted. ":"Edited. ")+(ch||"No unit changes.")+(slots.before.blob||slots.after.blob?" Photo"+(slots.before.blob&&slots.after.blob?"s":"")+" updated: "+[slots.before.blob?"before":"",slots.after.blob?"after":""].filter(Boolean).join(", ")+".":""));
       if(ok){closeOverlay();toast(resub?"Resubmitted to the GF":"Saved");}
     }
   });
@@ -1176,10 +1239,10 @@ function unitsText(d){return(d.lines||[]).map(l=>unitInfo(l.key).item+" × "+fmt
 function gfTable(host,list,showJob){
   const sel=new Set();
   host.innerHTML=list.length?'<div class="row-inline" style="margin-bottom:8px;align-items:center"><button class="btn sm" type="button" data-all>Select all</button><button class="btn sm" type="button" data-none>Clear</button><span class="sub" data-cnt></span><span style="margin-left:auto"></span><button class="btn primary" type="button" data-sign disabled>GF sign &amp; approve</button></div>'+
-    '<div class="tablebox"><table><thead><tr><th class="nosort" style="width:36px"></th><th class="nosort">Sheet #</th><th class="nosort">Work date</th>'+(showJob?'<th class="nosort">Job</th>':"")+'<th class="nosort">Location</th><th class="nosort">Crew / lead</th><th class="nosort">Units</th>'+(can.seePrice()?'<th class="nosort num">Amount</th>':"")+'<th class="nosort">Notes</th></tr></thead><tbody>'+
+    '<div class="tablebox"><table><thead><tr><th class="nosort" style="width:36px"></th><th class="nosort">Sheet #</th><th class="nosort">Work date</th>'+(showJob?'<th class="nosort">Job</th>':"")+'<th class="nosort">Location</th><th class="nosort">Crew / lead</th><th class="nosort">Units</th>'+(can.seePrice()?'<th class="nosort num">Amount</th>':"")+'<th class="nosort">Photos</th><th class="nosort">Notes</th></tr></thead><tbody>'+
     list.map(s=>{const pr=can.seePrice()?priceSheet(s):null;const held=s.hold&&s.hold.on;const j=jobById(s.jobId);
       return'<tr data-id="'+esc(s.id)+'"'+(held?' class="removed" title="On hold"':"")+'><td><input type="checkbox" data-s="'+esc(s.id)+'"'+(held?" disabled":"")+' aria-label="Select '+esc(s.no)+'"></td><td class="mono"><a href="#sheet-'+esc(s.id)+'"><b>'+esc(s.no)+"</b></a>"+(held?' <span class="chip c-bad">On hold</span>':"")+"</td><td>"+fmtD(s.workDate)+"</td>"+(showJob?"<td>"+esc(j?j.name:"")+"</td>":"")+'<td class="wrapc">'+esc(sheetPoleText(s))+"</td><td>"+esc(s.crew)+'</td><td class="wrapc">'+esc(unitsText(s))+"</td>"+
-        (pr?'<td class="mono num">'+(pr.total==null?'<span class="sub" title="'+esc(pr.errs.join("; "))+'">Check pricing</span>':money(pr.total))+"</td>":"")+'<td class="wrapc sub">'+esc(s.notes)+"</td></tr>";}).join("")+"</tbody></table></div>"
+        (pr?'<td class="mono num">'+(pr.total==null?'<span class="sub" title="'+esc(pr.errs.join("; "))+'">Check pricing</span>':money(pr.total))+"</td>":"")+"<td>"+photoBadges(s)+'</td><td class="wrapc sub">'+esc(s.notes)+"</td></tr>";}).join("")+"</tbody></table></div>"
     :'<div class="empty"><b>Nothing waiting for the GF</b>New unit sheets show up here to be signed.</div>';
   if(!list.length)return;
   const boxes=[...host.querySelectorAll("[data-s]")];const btn=host.querySelector("[data-sign]");
@@ -1322,8 +1385,9 @@ function openSheetUpload(jid){
         (e.warn.length?'<div class="banner">'+e.warn.map(esc).join("<br>")+"</div>":"")+
         '<table class="su-units"><tbody>'+lines.map(k=>'<tr><td>'+esc((opts.find(o=>o[0]===k)||[k,unitInfo(k).item])[1])+'</td><td><input type="number" step="any" min="0" inputmode="decimal" data-q="'+esc(k)+'" value="'+esc(e.qty[k])+'"></td><td><button class="btn sm danger" type="button" data-rmq="'+esc(k)+'" aria-label="Remove unit">✕</button></td></tr>').join("")+
         '<tr><td><select data-addk><option value="">+ Add a unit…</option>'+opts.filter(o=>!(o[0] in e.qty)).map(o=>'<option value="'+esc(o[0])+'">'+esc(o[1])+"</option>").join("")+'</select></td><td></td><td></td></tr></tbody></table>'+
+        photoSlotsHtml("su"+i,needPhotos())+
         '<label class="f wide">Notes / extras / difficulty justification<textarea data-k="notes">'+esc(e.notes)+"</textarea></label></div>";}).join("");
-    list.querySelectorAll(".su-card").forEach(card=>{const e=entries[+card.dataset.i];
+    list.querySelectorAll(".su-card").forEach(card=>{const e=entries[+card.dataset.i];bindPhotoSlots(card,e.slots);
       card.querySelector("[data-inc]").onchange=ev=>{e.include=ev.target.checked;card.classList.toggle("off",!e.include);upd();};
       card.querySelectorAll("[data-k]").forEach(el=>{el[el.tagName==="SELECT"?"onchange":"oninput"]=()=>{e[el.dataset.k]=el.value;upd();};});
       card.querySelectorAll("[data-q]").forEach(el=>el.oninput=()=>{e.qty[el.dataset.q]=el.value;});
@@ -1344,7 +1408,7 @@ function openSheetUpload(jid){
         const workDate=parseSheetDate(s.date);if(s.date&&!workDate)w.push('Date "'+s.date+'" couldn\'t be read.');if(!s.date)w.push("No date on the sheet.");
         if(!Object.keys(qty).length)w.push("No unit quantities were read from this page.");
         const dup=pole&&sheets().some(x=>x.jobId===j.id&&x.poleId===pole.id&&x.workDate===workDate);if(dup)w.push("This location already has a unit sheet for this date.");
-        return{page:s.page,include:!!pole&&Object.keys(qty).length>0&&!dup,poleId:pole?pole.id:"",workDate,crew:s.crew,wo:s.wo,fwo:s.fwo,awc:s.awc,poleSet:s.poleSet,notes:s.notes,qty,warn:w};});
+        return{slots:{before:{},after:{}},page:s.page,include:!!pole&&Object.keys(qty).length>0&&!dup,poleId:pole?pole.id:"",workDate,crew:s.crew,wo:s.wo,fwo:s.fwo,awc:s.awc,poleSet:s.poleSet,notes:s.notes,qty,warn:w};});
       info.textContent=f.name+": "+entries.length+" sheet page(s) found";
       m.querySelector("#su-warn").innerHTML=warn.length?'<div class="banner">'+warn.map(esc).join("<br>")+"</div>":"";draw();}
     catch(e){info.textContent="";toast("Couldn't read the PDF: "+errText(e),10000);}};
@@ -1352,11 +1416,13 @@ function openSheetUpload(jid){
     const sel=entries.filter(x=>x.include);
     for(const x of sel){if(!x.poleId)throw new Error("Page "+x.page+": pick the location.");if(!x.workDate)throw new Error("Page "+x.page+": enter the date.");if(!String(x.crew).trim())throw new Error("Page "+x.page+": enter the crew / lead.");
       const ks=Object.keys(x.qty).filter(k=>String(x.qty[k]).trim()!=="");if(!ks.length)throw new Error("Page "+x.page+": no unit quantities.");
-      for(const k of ks){const q=Number(x.qty[k]);if(!isFinite(q)||q<0)throw new Error("Page "+x.page+": "+unitInfo(k).item+" quantity isn't a number.");}}
+      for(const k of ks){const q=Number(x.qty[k]);if(!isFinite(q)||q<0)throw new Error("Page "+x.page+": "+unitInfo(k).item+" quantity isn't a number.");}
+      const miss=photosMissing(x.slots);if(needPhotos()&&miss.length)throw new Error("Page "+x.page+": add the "+miss.join(" and ")+" photo"+(miss.length>1?"s":"")+".");}
     if(!canSave())return;
     const src=await storePackage(file);let made=0;const fails=[];
     for(const x of sel){const lines=Object.keys(x.qty).filter(k=>String(x.qty[k]).trim()!==""&&Number(x.qty[k])>0).map(k=>({key:k,qty:Number(x.qty[k]),note:""}));
-      const doc={jobId:j.id,poleId:x.poleId,poleText:"",workDate:x.workDate,crew:x.crew.trim(),awc:x.awc.trim(),wo:x.wo.trim(),fwo:x.fwo.trim(),poleSet:x.poleSet,notes:x.notes.trim(),lines,status:ST.SUB,submittedAt:new Date().toISOString(),source:{file:src.file,name:src.name,page:x.page}};
+      const photos=await savePhotos(x.slots);
+      const doc={photos,jobId:j.id,poleId:x.poleId,poleText:"",workDate:x.workDate,crew:x.crew.trim(),awc:x.awc.trim(),wo:x.wo.trim(),fwo:x.fwo.trim(),poleSet:x.poleSet,notes:x.notes.trim(),lines,status:ST.SUB,submittedAt:new Date().toISOString(),source:{file:src.file,name:src.name,page:x.page}};
       const id=await createDoc("sheet",doc,"Uploaded from "+src.name+" page "+x.page+" ("+lines.length+" unit line(s))");if(id)made++;else fails.push(x.page);}
     closeOverlay();refresh();toast(made+" unit sheet(s) submitted to the GF"+(fails.length?". Pages not saved: "+fails.join(", "):""),9000);});
 }
