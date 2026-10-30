@@ -208,6 +208,7 @@ tfoot td{background:var(--info-bg);border-top:2px solid var(--navy)}
 .tabs a[hidden]{display:none}
 .tabs a .ct:empty{display:none}
 [hidden]{display:none!important}
+body:not(.crewonly) .crew-only{display:none!important}
 .sigbox{display:flex;gap:12px;align-items:flex-start;border:2px dashed var(--navy);border-radius:6px;padding:12px 14px;background:var(--info-bg);cursor:pointer;font-size:14.5px}
 .sigbox input{width:22px;height:22px;margin-top:2px;flex:none}
 .sig{color:var(--ok);font-weight:700}
@@ -333,7 +334,8 @@ table.static thead th[colspan]{text-transform:none;letter-spacing:.01em;font-siz
   </div>
   <div class="navrow"><div class="wrap">
     <nav class="tabs" aria-label="Views">
-      <a href="#overview" data-nav="overview">Overview<span class="ct" id="ct-jobs"></span></a>
+      <a href="#overview" data-nav="overview" class="nocrew">Overview<span class="ct" id="ct-jobs"></span></a>
+      <a href="#sheets" data-nav="sheets" class="crew-only">My unit sheets</a>
       <a href="#addjob" data-nav="addjob" class="nocrew bill-only">Add Job</a>
       <a href="#invoices" data-nav="invoices" class="nocrew">Invoices<span class="ct" id="ct-ready"></span></a>
       <a href="#rates" data-nav="rates" class="nocrew" hidden>Rates</a>
@@ -954,10 +956,10 @@ function route(){
   else if(h.indexOf("jobedit-")===0){S.view="jobedit";S.docId=h.slice(8);}
   else if(h.indexOf("job-")===0){const id=h.slice(4);if(S.view!=="job"||S.docId!==id){S.jobTab=null;S.pf={q:"",st:""};}S.view="job";S.docId=id;}
   else if(["invoices","addjob","addjob-new","rates","sheets"].includes(h))S.view=h;else S.view="overview";
-  if(role()==="crew"&&!["overview","job","sheet","sheets"].includes(S.view))S.view="overview";
+  if(role()==="crew"&&S.view!=="sheet")S.view="sheets";  /* crews only see and fill out their own unit sheets */
   if(S.view==="rates"&&!canRates())S.view="overview";
   if(["invoices","invoice"].includes(S.view)&&!can.seePrice())S.view="overview";
-  const nav={sheet:"overview",sheets:"overview",job:"overview",invoice:"invoices","addjob-new":"addjob",jobedit:"addjob"}[S.view]||S.view;
+  const nav=role()==="crew"?{sheet:"sheets"}[S.view]||"sheets":{sheet:"overview",sheets:"overview",job:"overview",invoice:"invoices","addjob-new":"addjob",jobedit:"addjob"}[S.view]||S.view;
   if(S.view!=="jobedit")S.jobEdit=null;
   document.querySelectorAll("[data-nav]").forEach(a=>{if(a.dataset.nav===nav)a.setAttribute("aria-current","page");else a.removeAttribute("aria-current");});
   refresh();window.scrollTo(0,0);
@@ -994,7 +996,7 @@ function renderSheets(){
   const all=visibleSheets();
   const cnt=s=>all.filter(x=>x.status===s).length;
   const crew=role()==="crew";
-  main.innerHTML='<a class="back" href="#overview">← Overview</a>'+(crew?'<div class="cta"><div><b>Crew daily unit sheets</b><span class="sub">Fill out one sheet per location. Your General Foreman reviews each sheet before it goes to billing.</span></div><button class="btn primary big w-only" type="button" id="cta-new">+ New unit sheet</button></div>':"")+
+  main.innerHTML=(crew?'<div class="cta"><div><b>My unit sheets</b><span class="sub">Fill out one sheet per location and submit it. Your General Foreman signs it off.</span></div><div class="acts" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn big w-only" type="button" id="cta-upl">Upload filled sheets</button><button class="btn primary big w-only" type="button" id="cta-new">+ New unit sheet</button></div></div>':'<a class="back" href="#overview">← Overview</a>')+
     '<h2 class="sec">Workflow</h2><section class="tiles">'+
     tile("Awaiting GF",cnt(ST.SUB),"Crew sheets to review",false)+tile("Returned to field",cnt(ST.RET),"Sent back for fixes",cnt(ST.RET)>0)+
     tile("Ready to bill",cnt(ST.OK)+cnt(ST.GF),"Signed by the GF",false)+tile("Invoiced",cnt(ST.INV),"On an invoice",false)+"</section>"+
@@ -1003,6 +1005,7 @@ function renderSheets(){
     '<select id="f-job" aria-label="Job"><option value="">All jobs</option>'+jobs().map(j=>'<option value="'+esc(j.id)+'">'+esc(j.name)+"</option>").join("")+'</select><span class="count" id="f-count"></span></div>'+
     '<div class="tablebox"><table><thead><tr><th class="nosort">Sheet #</th><th class="nosort">Work date</th><th class="nosort">Job</th><th class="nosort">Pole / location</th><th class="nosort">Crew / lead</th><th class="nosort">Units</th>'+(can.seePrice()?'<th class="nosort num">Amount</th>':"")+'<th class="nosort">Status</th><th class="nosort">Last update</th></tr></thead><tbody id="tb"></tbody></table></div><div id="gf-bulk" hidden></div>';
   const cta=document.getElementById("cta-new");if(cta)cta.onclick=()=>openSheetForm(null);
+  const cu=document.getElementById("cta-upl");if(cu)cu.onclick=()=>pickJob(id=>openSheetUpload(id));
   const q=document.getElementById("f-q"),st=document.getElementById("f-st"),jb=document.getElementById("f-job");st.value=S.f.status;jb.value=S.f.job;
   q.oninput=()=>{S.f.q=q.value;fill();};st.onchange=()=>{S.f.status=st.value;fill();};jb.onchange=()=>{S.f.job=jb.value;fill();};
   function fill(){
@@ -1045,7 +1048,7 @@ function renderSheet(){
   if(d.status===ST.INV&&d.invoiceId&&can.seePrice())acts.push('<a class="btn" href="#inv-'+esc(d.invoiceId)+'">Open invoice '+esc(d.invoiceNo||"")+"</a>");
   const ret=d.status===ST.RET&&d.returnNote?'<div class="banner bad"><b>Returned by '+esc(d.returnedBy||"")+":</b> "+esc(d.returnNote)+"</div>":"";
   const hold=d.hold&&d.hold.on?'<div class="banner"><b>On hold — '+esc(d.hold.by)+":</b> "+esc(d.hold.note)+"</div>":"";
-  main.innerHTML=(j?'<a class="back" href="#job-'+esc(j.id)+'">← '+esc(j.name)+'</a>':'<a class="back" href="#overview">← Overview</a>')+ret+hold+
+  main.innerHTML=(role()==="crew"?'<a class="back" href="#sheets">← My unit sheets</a>':j?'<a class="back" href="#job-'+esc(j.id)+'">← '+esc(j.name)+'</a>':'<a class="back" href="#overview">← Overview</a>')+ret+hold+
     '<section class="jobhead"><div><h1>Unit sheet '+esc(d.no)+'</h1><div class="meta">'+stChip(d)+"<span>"+esc(j?j.name:"(job removed)")+"</span><span>"+esc(fmtD(d.workDate))+'</span></div></div><div class="acts">'+acts.join("")+"</div></section>"+
     '<section class="details">'+dl("Date",esc(fmtD(d.workDate)))+dl("Crew / lead",esc(d.crew))+dl("AWC",esc(d.awc))+dl("Work order #",esc(d.wo))+dl("FWO #",esc(d.fwo))+dl("Pole set?",esc(d.poleSet==="yes"?"Yes":d.poleSet==="no"?"No":""))+
       dl("Pole # / location",esc(p?p.esPole+" — "+p.street+", "+p.town:(d.poleText?d.poleText+" (not on packet list)":"")),true)+
@@ -1288,6 +1291,9 @@ function openPrintPicker(jid){
 }
 
 
+function pickJob(cb){const act=jobs().filter(j=>!j.archived);if(!act.length){toast("No active jobs yet.");return;}if(act.length===1){cb(act[0].id);return;}
+  const m=modal("Which job?",'<div class="ulist">'+act.map(j=>'<button type="button" class="u" style="text-align:left;background:none;border:0;cursor:pointer" data-j="'+esc(j.id)+'"><b>'+esc(j.name)+'</b><span class="sub">'+(j.poles||[]).length+" locations</span></button>").join("")+"</div>",'<button class="btn" type="button" data-x>Cancel</button>');
+  m.querySelectorAll("[data-j]").forEach(b=>b.onclick=()=>{closeOverlay();cb(b.dataset.j);});}
 /* ---------- upload filled unit sheets (PDF of the printed checklist) ---------- */
 function parseSheetDate(s){s=String(s||"").trim();let m=/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/.exec(s);
   if(m){let y=+m[3];if(y<100)y+=2000;const mo=+m[1],d=+m[2];if(mo>=1&&mo<=12&&d>=1&&d<=31)return y+"-"+String(mo).padStart(2,"0")+"-"+String(d).padStart(2,"0");}

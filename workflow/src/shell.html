@@ -37,6 +37,7 @@ tfoot td{background:var(--info-bg);border-top:2px solid var(--navy)}
 .tabs a[hidden]{display:none}
 .tabs a .ct:empty{display:none}
 [hidden]{display:none!important}
+body:not(.crewonly) .crew-only{display:none!important}
 .sigbox{display:flex;gap:12px;align-items:flex-start;border:2px dashed var(--navy);border-radius:6px;padding:12px 14px;background:var(--info-bg);cursor:pointer;font-size:14.5px}
 .sigbox input{width:22px;height:22px;margin-top:2px;flex:none}
 .sig{color:var(--ok);font-weight:700}
@@ -162,7 +163,8 @@ table.static thead th[colspan]{text-transform:none;letter-spacing:.01em;font-siz
   </div>
   <div class="navrow"><div class="wrap">
     <nav class="tabs" aria-label="Views">
-      <a href="#overview" data-nav="overview">Overview<span class="ct" id="ct-jobs"></span></a>
+      <a href="#overview" data-nav="overview" class="nocrew">Overview<span class="ct" id="ct-jobs"></span></a>
+      <a href="#sheets" data-nav="sheets" class="crew-only">My unit sheets</a>
       <a href="#addjob" data-nav="addjob" class="nocrew bill-only">Add Job</a>
       <a href="#invoices" data-nav="invoices" class="nocrew">Invoices<span class="ct" id="ct-ready"></span></a>
       <a href="#rates" data-nav="rates" class="nocrew" hidden>Rates</a>
