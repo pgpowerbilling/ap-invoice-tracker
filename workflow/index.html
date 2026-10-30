@@ -208,6 +208,13 @@ tfoot td{background:var(--info-bg);border-top:2px solid var(--navy)}
 .tabs a[hidden]{display:none}
 .tabs a .ct:empty{display:none}
 [hidden]{display:none!important}
+.ublbar{display:grid;grid-template-columns:1fr auto;gap:2px 16px;align-items:center;text-decoration:none;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-left:6px solid var(--red);border-radius:4px;padding:14px 18px}
+.ublbar:hover{background:var(--hover)}
+.ublbar .k{font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.ublbar .v{grid-row:2;font-size:30px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums}
+.ublbar .s{grid-row:3;font-size:13px;color:var(--muted)}
+.ublbar .go{grid-row:1/4;grid-column:2;font-weight:700;color:var(--navy);white-space:nowrap}
+@media (max-width:640px){.ublbar{grid-template-columns:1fr}.ublbar .go{grid-row:auto;grid-column:auto}}
 .ph-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
 .ph-slot,.ph-fig{border:1px solid var(--line);border-radius:6px;padding:10px;background:var(--panel);display:flex;flex-direction:column;gap:8px;margin:0}
 .ph-h,.ph-fig figcaption{font-size:14px;color:var(--navy)}
@@ -346,6 +353,7 @@ table.static thead th[colspan]{text-transform:none;letter-spacing:.01em;font-siz
       <a href="#sheets" data-nav="sheets" class="crew-only">My unit sheets</a>
       <a href="#addjob" data-nav="addjob" class="nocrew bill-only">Add Job</a>
       <a href="#invoices" data-nav="invoices" class="nocrew">Invoices<span class="ct" id="ct-ready"></span></a>
+      <a href="#ubl" data-nav="ubl" class="nocrew" hidden>UBL</a>
       <a href="#rates" data-nav="rates" class="nocrew" hidden>Rates</a>
     </nav>
     <div class="mast-actions">
@@ -969,10 +977,11 @@ function route(){
   else if(h.indexOf("inv-")===0){S.view="invoice";S.docId=h.slice(4);}
   else if(h.indexOf("jobedit-")===0){S.view="jobedit";S.docId=h.slice(8);}
   else if(h.indexOf("job-")===0){const id=h.slice(4);if(S.view!=="job"||S.docId!==id){S.jobTab=null;S.pf={q:"",st:""};}S.view="job";S.docId=id;}
-  else if(["invoices","addjob","addjob-new","rates","sheets"].includes(h))S.view=h;else S.view="overview";
+  else if(["invoices","addjob","addjob-new","rates","sheets","ubl"].includes(h))S.view=h;else S.view="overview";
   if(role()==="crew"&&S.view!=="sheet")S.view="sheets";  /* crews only see and fill out their own unit sheets */
   if(S.view==="rates"&&!canRates())S.view="overview";
   if(["invoices","invoice"].includes(S.view)&&!can.seeInvoices())S.view="overview";
+  if(S.view==="ubl"&&!canUbl())S.view="overview";
   const nav=role()==="crew"?{sheet:"sheets"}[S.view]||"sheets":{sheet:"overview",sheets:"overview",job:"overview",invoice:"invoices","addjob-new":"addjob",jobedit:"addjob"}[S.view]||S.view;
   if(S.view!=="jobedit")S.jobEdit=null;
   document.querySelectorAll("[data-nav]").forEach(a=>{if(a.dataset.nav===nav)a.setAttribute("aria-current","page");else a.removeAttribute("aria-current");});
@@ -986,10 +995,10 @@ function refresh(){
   set("ct-jobs",jobs().filter(j=>!j.archived).length||"");
   set("ct-ready",sheets().filter(isReady).length||"");
   document.getElementById("btn-new").hidden=!can.newSheet();
-  document.querySelectorAll("[data-nav=rates]").forEach(a=>a.hidden=!canRates());document.querySelectorAll("[data-nav=invoices]").forEach(a=>a.hidden=!can.seeInvoices());
+  document.querySelectorAll("[data-nav=rates]").forEach(a=>a.hidden=!canRates());document.querySelectorAll("[data-nav=invoices]").forEach(a=>a.hidden=!can.seeInvoices());document.querySelectorAll("[data-nav=ubl]").forEach(a=>a.hidden=!canUbl());
   const v=S.view;
   if(v==="sheet")renderSheet();else if(v==="invoice")renderInvoice();else if(v==="invoices")renderInvoices();
-  else if(v==="job")renderJob();else if(v==="addjob")renderAddJob();else if(v==="addjob-new")renderAddJobForm();else if(v==="jobedit")renderJobEdit();else if(v==="rates")renderRates();else if(v==="sheets")renderSheets();else renderOverview();
+  else if(v==="job")renderJob();else if(v==="addjob")renderAddJob();else if(v==="addjob-new")renderAddJobForm();else if(v==="jobedit")renderJobEdit();else if(v==="rates")renderRates();else if(v==="ubl")renderUbl();else if(v==="sheets")renderSheets();else renderOverview();
 }
 
 /* ---------- pricing (rates from the template's Unit Rate Master; no rounding until display / final total) ---------- */
@@ -1209,6 +1218,71 @@ function diffLines(a,b){const A=new Map((a||[]).map(l=>[l.key,l])),B=new Map((b|
   B.forEach((l,k)=>{const o=A.get(k);if(!o)out.push("+"+nm(k)+" ×"+fmtN(l.qty));else if(Number(o.qty)!==Number(l.qty))out.push(nm(k)+" "+fmtN(o.qty)+"→"+fmtN(l.qty));});
   A.forEach((l,k)=>{if(!B.has(k))out.push("−"+nm(k));});return out.length?"Units: "+out.join(", "):"";}
 
+
+/* ---------- UBL: unbilled liabilities ----------
+   Every unit sheet whose work has not been billed yet: awaiting CM signature, returned to the field,
+   ready to bill, and on an invoice that has not been marked Sent. Marking an invoice Sent removes its
+   sheets from the UBL; voiding it puts them back. Amounts = qty x area rate, unrounded until the total. */
+const canUbl=()=>isBill();
+const UBL_STAGES=[["cm","Awaiting CM signature"],["ret","Returned to field"],["ready","Ready to bill"],["draft","Invoiced, not sent"]];
+function ublStage(s){
+  if(s.status===ST.SUB)return"cm";if(s.status===ST.RET)return"ret";if(isReady(s))return"ready";
+  if(s.status===ST.INV){const inv=s.invoiceId&&S.docs.get(s.invoiceId);if(!inv||inv.status==="Draft")return"draft";return null;}
+  return null;}
+function ublRows(from,to){
+  return sheets().filter(s=>{const st=ublStage(s);if(!st)return false;if(!from&&!to)return true;if(!s.workDate)return true;return(!from||s.workDate>=from)&&(!to||s.workDate<=to);})
+    .map(s=>{const pr=priceSheet(s);const j=jobById(s.jobId);const inv=s.invoiceId&&S.docs.get(s.invoiceId);
+      return{s,stage:ublStage(s),amount:pr.total,errs:pr.errs,job:j,area:pr.area,inv};})
+    .sort((a,b)=>String(a.job?a.job.name:"").localeCompare(String(b.job?b.job.name:""))||String(a.s.workDate||"9").localeCompare(String(b.s.workDate||"9"))||String(a.s.no).localeCompare(String(b.s.no)));}
+function ublSum(rows){const t={total:0,unpriced:0,n:rows.length};UBL_STAGES.forEach(([k])=>t[k]=0);rows.forEach(r=>{if(r.amount==null)t.unpriced++;else{t.total+=r.amount;t[r.stage]+=r.amount;}});return t;}
+const monthBounds=(y,m)=>{const a=y+"-"+String(m).padStart(2,"0")+"-01";const last=new Date(Date.UTC(y,m,0)).getUTCDate();return[a,y+"-"+String(m).padStart(2,"0")+"-"+String(last).padStart(2,"0")];};
+function renderUbl(){
+  if(!canUbl()){location.hash="overview";return;}
+  const now=new Date();const st=S.ubl||(S.ubl={mode:"month",from:monthBounds(now.getFullYear(),now.getMonth()+1)[0],to:monthBounds(now.getFullYear(),now.getMonth()+1)[1],ran:null});
+  const all=ublSum(ublRows());
+  main.innerHTML='<section class="jobhead"><div><h1>UBL — unbilled liabilities</h1><div class="meta">Work tracked but not yet billed: awaiting CM signature, returned, ready to bill, and invoiced but not sent. An invoice drops off the UBL when it is marked Sent.</div></div></section>'+
+    '<section class="tiles">'+tile("Running UBL total",money(cents(all.total)),all.n+" unit sheet"+(all.n===1?"":"s")+(all.unpriced?" · "+all.unpriced+" unpriced":""),false)+UBL_STAGES.map(([k,l])=>tile(l,money(cents(all[k])),"",false)).join("")+"</section>"+
+    '<div class="details" style="display:block"><div class="row-inline" style="align-items:flex-end">'+
+    '<label class="f" for="ubl-mode">Period<select id="ubl-mode"><option value="month">Month</option><option value="range">Date range</option><option value="all">All open (no date limit)</option></select></label>'+
+    '<label class="f" for="ubl-month" data-m>Month<input type="month" id="ubl-month" value="'+esc(st.from.slice(0,7))+'"></label>'+
+    '<label class="f" for="ubl-from" data-r>From (work date)<input type="date" id="ubl-from" value="'+esc(st.from)+'"></label><label class="f" for="ubl-to" data-r>To (work date)<input type="date" id="ubl-to" value="'+esc(st.to)+'"></label>'+
+    '<button class="btn primary big" type="button" id="ubl-go">GENERATE UBL</button></div>'+
+    '<p class="sub" style="margin:8px 0 0">Sheets are picked by their work date. Sheets with no work date yet are always included and marked, so nothing unbilled is missed.</p></div><div id="ubl-out"></div>';
+  const mode=document.getElementById("ubl-mode");mode.value=st.mode;
+  const vis=()=>{main.querySelectorAll("[data-m]").forEach(e=>e.hidden=mode.value!=="month");main.querySelectorAll("[data-r]").forEach(e=>e.hidden=mode.value!=="range");};
+  mode.onchange=()=>{st.mode=mode.value;vis();};vis();
+  document.getElementById("ubl-go").onclick=()=>{
+    if(mode.value==="month"){const v=document.getElementById("ubl-month").value;if(!v){toast("Pick a month.");return;}const [y,m]=v.split("-").map(Number);[st.from,st.to]=monthBounds(y,m);}
+    else if(mode.value==="range"){st.from=document.getElementById("ubl-from").value;st.to=document.getElementById("ubl-to").value;if(!st.from||!st.to){toast("Pick both dates.");return;}if(st.to<st.from){toast("The To date is before the From date.");return;}}
+    st.mode=mode.value;st.ran=new Date().toISOString();drawUbl();};
+  if(st.ran)drawUbl();
+}
+function ublLabel(st){return st.mode==="all"?"All open work":st.mode==="month"?new Date(st.from+"T12:00:00").toLocaleString("en-US",{month:"long",year:"numeric"}):fmtD(st.from)+" – "+fmtD(st.to);}
+function drawUbl(){
+  const st=S.ubl;const rows=st.mode==="all"?ublRows():ublRows(st.from,st.to);const t=ublSum(rows);const out=document.getElementById("ubl-out");
+  const byJob=new Map();rows.forEach(r=>{const k=r.job?r.job.id:"?";const e=byJob.get(k)||{job:r.job,rows:[]};e.rows.push(r);byJob.set(k,e);});
+  const stageName=k=>(UBL_STAGES.find(x=>x[0]===k)||[k,k])[1];
+  out.innerHTML='<section class="jobhead" style="margin-top:6px"><div><h2 style="margin:0;color:var(--navy)">UBL — '+esc(ublLabel(st))+'</h2><div class="meta">Generated '+esc(fmtT(st.ran))+" by "+esc(S.me.name)+" · "+rows.length+" sheet"+(rows.length===1?"":"s")+'</div></div><div class="acts"><button class="btn" type="button" id="ubl-csv"'+(rows.length?"":" disabled")+'>Export CSV</button><button class="btn" type="button" id="ubl-print"'+(rows.length?"":" disabled")+">Print / Save PDF</button></div></section>"+
+    (t.unpriced?'<div class="banner"><b>'+t.unpriced+" sheet"+(t.unpriced===1?" is":"s are")+" not in the total</b> because "+(t.unpriced===1?"it can't":"they can't")+" be priced yet (see the Pricing issue column).</div>":"")+
+    '<h3 class="sec">Summary</h3><div class="tablebox"><table class="static"><thead><tr><th>Job</th>'+UBL_STAGES.map(([,l])=>'<th class="num">'+esc(l)+"</th>").join("")+'<th class="num">UBL total (USD)</th></tr></thead><tbody>'+
+    [...byJob.values()].map(e=>{const s=ublSum(e.rows);return"<tr><td><b>"+esc(e.job?e.job.name:"(job removed)")+"</b></td>"+UBL_STAGES.map(([k])=>'<td class="mono num">'+(s[k]?money(cents(s[k])):'<span class="sub">—</span>')+"</td>").join("")+'<td class="mono num"><b>'+money(cents(s.total))+"</b></td></tr>";}).join("")+
+    '</tbody><tfoot><tr><td><b>Total</b></td>'+UBL_STAGES.map(([k])=>'<td class="mono num"><b>'+money(cents(t[k]))+"</b></td>").join("")+'<td class="mono num"><b>'+money(cents(t.total))+"</b></td></tr></tfoot></table></div>"+
+    '<h3 class="sec">Detail</h3><div class="tablebox"><table><thead><tr><th class="nosort">Sheet #</th><th class="nosort">Work date</th><th class="nosort">Job</th><th class="nosort">Location</th><th class="nosort">Crew / lead</th><th class="nosort">Stage</th><th class="nosort">Invoice</th><th class="nosort num">Amount</th><th class="nosort">Pricing issue</th></tr></thead><tbody id="ubl-tb">'+
+    (rows.map(r=>'<tr tabindex="0" data-id="'+esc(r.s.id)+'"><td class="mono"><b>'+esc(r.s.no)+"</b></td><td>"+dateCell(r.s)+"</td><td>"+esc(r.job?r.job.name:"")+'</td><td class="wrapc">'+esc(sheetPoleText(r.s))+"</td><td>"+crewCell(r.s)+"</td><td>"+esc(stageName(r.stage))+(r.s.hold&&r.s.hold.on?' <span class="chip c-bad">On hold</span>':"")+'</td><td class="mono">'+esc(r.inv?r.inv.no+" (draft)":"")+'</td><td class="mono num">'+(r.amount==null?"—":money(r.amount))+'</td><td class="wrapc sub">'+esc(r.errs.join("; "))+"</td></tr>").join("")||'<tr><td colspan="9"><div class="empty"><b>No unbilled work in this period</b></div></td></tr>')+
+    "</tbody></table></div>";
+  bindRows(document.getElementById("ubl-tb"),id=>location.hash="sheet-"+id);
+  document.getElementById("ubl-csv").onclick=()=>{const head=["Sheet #","Work date","Job","Customer","PO","Location","Ticket ID","Crew / lead","Stage","Invoice #","Pricing area","Amount (USD)","Pricing issue"];
+    const L=[["UBL - Unbilled liabilities: "+ublLabel(st)],["Generated "+fmtT(st.ran)+" by "+S.me.name],[],head].concat(rows.map(r=>{const p=poleById(r.job,r.s.poleId);return[r.s.no,fmtD(r.s.workDate)||"No date",r.job?r.job.name:"",r.job?r.job.customer:"",r.job?r.job.po:"",sheetPoleText(r.s),p?p.ticket:"",r.s.crew||"",stageName(r.stage),r.inv?r.inv.no:"",r.area,r.amount==null?"":cents(r.amount).toFixed(2),r.errs.join("; ")];}));
+    L.push([]);UBL_STAGES.forEach(([k,l])=>L.push(["","","","","","","","",l,"","",cents(t[k]).toFixed(2),""]));L.push(["","","","","","","","","UBL total","","",cents(t.total).toFixed(2),t.unpriced?t.unpriced+" unpriced sheet(s) not included":""]);
+    download(new Blob(["﻿"+L.map(r=>r.map(v=>'"'+String(v==null?"":v).replace(/"/g,'""')+'"').join(",")).join("\r\n")],{type:"text/csv"}),"UBL - "+ublLabel(st).replace(/[\\/:*?"<>|]/g,"-")+".csv");};
+  document.getElementById("ubl-print").onclick=()=>{const p=document.getElementById("print");
+    p.innerHTML='<div class="pv"><div class="pv-head"><img src="../pg-logo.jpg" alt="P&amp;G Power Co."><div class="pv-title"><h1 style="font-size:20px">UBL REPORT</h1><table class="pv-meta"><tr><td>Period</td><td><b>'+esc(ublLabel(st))+"</b></td></tr><tr><td>Generated</td><td>"+esc(fmtT(st.ran))+"</td></tr><tr><td>By</td><td>"+esc(S.me.name)+'</td></tr></table></div></div><div class="pv-stripe"></div>'+
+      out.querySelector("table.static").outerHTML.replace('class="static"','class="pv-lines"')+'<h2 class="pv-h2" style="margin-top:16px">Detail</h2><table class="pv-lines"><thead><tr><th>Sheet</th><th>Work date</th><th>Job</th><th>Location</th><th>Stage</th><th class="num">Amount</th></tr></thead><tbody>'+
+      rows.map(r=>"<tr><td>"+esc(r.s.no)+"</td><td>"+esc(fmtD(r.s.workDate)||"No date")+"</td><td>"+esc(r.job?r.job.name:"")+"</td><td>"+esc(sheetPoleText(r.s))+"</td><td>"+esc(stageName(r.stage))+'</td><td class="num">'+(r.amount==null?"Unpriced":money(r.amount))+"</td></tr>").join("")+
+      '</tbody><tfoot><tr><td colspan="5" class="num">UBL total (USD)</td><td class="num">'+money(cents(t.total))+"</td></tr></tfoot></table></div>";
+    document.body.classList.add("printing");const prev=document.title;document.title="UBL - "+ublLabel(st);const done=()=>{document.body.classList.remove("printing");document.title=prev;window.removeEventListener("afterprint",done);};window.addEventListener("afterprint",done);setTimeout(()=>window.print(),200);};
+}
+
 /* ---------- overview (home) ---------- */
 function jobStats(j,ss){
   const mine=ss.filter(s=>s.jobId===j.id);const by=st=>mine.filter(s=>s.status===st).length;
@@ -1222,6 +1296,7 @@ function renderOverview(){
   const cnt=s=>ss.filter(x=>x.status===s).length;const crew=role()==="crew";
   const tq=(k,v,s,st,alert)=>'<button type="button" class="tile tbtn'+(alert?" alert":"")+'" data-st="'+st+'"><span class="k">'+esc(k)+'</span><span class="v">'+esc(v)+'</span><span class="s">'+esc(s)+"</span></button>";
   main.innerHTML=(crew?'<div class="cta"><div><b>My unit sheets</b><span class="sub">Fill out one sheet per location. Your Construction Manager reviews each sheet before it goes to billing.</span></div><button class="btn primary big w-only" type="button" id="cta-new">+ New unit sheet</button></div>':"")+
+    (canUbl()?(()=>{const u=ublSum(ublRows());return'<a class="ublbar" href="#ubl"><span class="k">UBL — unbilled liabilities (running total)</span><span class="v">'+money(cents(u.total))+'</span><span class="s">'+UBL_STAGES.map(([k,l])=>esc(l)+" "+money(cents(u[k]))).join(" · ")+(u.unpriced?" · "+u.unpriced+" unpriced sheet"+(u.unpriced===1?"":"s")+" not included":"")+'</span><span class="go">Open UBL →</span></a>';})():"")+
     '<h2 class="sec">'+(crew?"My unit sheets":"Workflow")+'</h2><section class="tiles">'+
     tq("Awaiting CM signature",cnt(ST.SUB),"Sheets to review",ST.SUB)+tq("Returned to field",cnt(ST.RET),"Sent back for fixes",ST.RET,cnt(ST.RET)>0)+
     tq("Ready to bill",cnt(ST.OK)+cnt(ST.GF),"Signed by the CM",ST.OK)+tq("All open sheets",ss.filter(s=>s.status!==ST.INV).length,"Not yet invoiced","open")+"</section>"+

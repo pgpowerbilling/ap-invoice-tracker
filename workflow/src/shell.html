@@ -37,6 +37,13 @@ tfoot td{background:var(--info-bg);border-top:2px solid var(--navy)}
 .tabs a[hidden]{display:none}
 .tabs a .ct:empty{display:none}
 [hidden]{display:none!important}
+.ublbar{display:grid;grid-template-columns:1fr auto;gap:2px 16px;align-items:center;text-decoration:none;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-left:6px solid var(--red);border-radius:4px;padding:14px 18px}
+.ublbar:hover{background:var(--hover)}
+.ublbar .k{font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.ublbar .v{grid-row:2;font-size:30px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums}
+.ublbar .s{grid-row:3;font-size:13px;color:var(--muted)}
+.ublbar .go{grid-row:1/4;grid-column:2;font-weight:700;color:var(--navy);white-space:nowrap}
+@media (max-width:640px){.ublbar{grid-template-columns:1fr}.ublbar .go{grid-row:auto;grid-column:auto}}
 .ph-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
 .ph-slot,.ph-fig{border:1px solid var(--line);border-radius:6px;padding:10px;background:var(--panel);display:flex;flex-direction:column;gap:8px;margin:0}
 .ph-h,.ph-fig figcaption{font-size:14px;color:var(--navy)}
@@ -175,6 +182,7 @@ table.static thead th[colspan]{text-transform:none;letter-spacing:.01em;font-siz
       <a href="#sheets" data-nav="sheets" class="crew-only">My unit sheets</a>
       <a href="#addjob" data-nav="addjob" class="nocrew bill-only">Add Job</a>
       <a href="#invoices" data-nav="invoices" class="nocrew">Invoices<span class="ct" id="ct-ready"></span></a>
+      <a href="#ubl" data-nav="ubl" class="nocrew" hidden>UBL</a>
       <a href="#rates" data-nav="rates" class="nocrew" hidden>Rates</a>
     </nav>
     <div class="mast-actions">
