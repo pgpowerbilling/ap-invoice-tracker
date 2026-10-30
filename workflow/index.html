@@ -614,7 +614,8 @@ const isBill=()=>isAdmin()||role()==="approver";
 const RATE_USERS=["jsmith","skarlowsky"];
 const canRates=()=>!!(S.me&&RATE_USERS.includes(S.me.username));
 const hasToken=()=>!!(S.index&&S.index.ghToken);
-const W=()=>S.canWrite;
+/* permissions follow the role; saving itself still needs the GitHub key (canSave prompts for it) */
+const W=()=>!!S.me&&role()!=="viewer";
 const can={
   newSheet:()=>W()&&["admin","gf","crew"].includes(role()),
   editSheet:d=>W()&&d.status!==ST.INV&&(isAdmin()||(role()==="approver"&&[ST.GF,ST.OK].includes(d.status))||(role()==="gf"&&[ST.SUB,ST.RET].includes(d.status))||(role()==="crew"&&d.createdByKey===S.myKey&&[ST.SUB,ST.RET].includes(d.status))),
@@ -626,7 +627,7 @@ const can={
   setup:()=>W()&&isBill(),
   seePrice:()=>role()!=="crew"
 };
-function applyRO(){S.canWrite=hasToken()&&!!S.me&&role()!=="viewer";document.body.classList.toggle("ro",!S.canWrite);document.body.classList.toggle("notadmin",!isAdmin());
+function applyRO(){S.canWrite=!!S.me&&role()!=="viewer";document.body.classList.toggle("ro",!S.canWrite);document.body.classList.toggle("notadmin",!isAdmin());
   document.body.classList.toggle("nobill",!isBill());document.body.classList.toggle("crewonly",role()==="crew");renderBanner();}
 function renderBanner(){const b=document.getElementById("bannerWrap");if(!b)return;
   if(!S.index||hasToken()){b.innerHTML="";return;}
@@ -742,7 +743,7 @@ function enterApp(){
   document.getElementById("meName").textContent=S.me.name;document.getElementById("meRole").textContent=ROLES[S.me.role]||S.me.role;
   if(role()==="crew")S.f.status="";
   applyRO();route();
-  clearInterval(S.poll);S.poll=setInterval(async()=>{if(document.hidden||S.busy||overlay.innerHTML)return;try{await loadAll();applyRO();refresh();}catch(e){}},90000);
+  clearInterval(S.poll);S.poll=setInterval(async()=>{if(document.hidden||S.busy||overlay.innerHTML||S.view==="jobedit"||S.view==="addjob-new")return;try{await loadAll();applyRO();refresh();}catch(e){}},90000);
 }
 async function initLogin(){
   try{S.config=await pagesGet("config.json");}catch(e){document.getElementById("loginErr").textContent="The tracker couldn't load its settings. Reload the page.";}
@@ -861,11 +862,13 @@ function route(){
   const h=(location.hash||"").replace(/^#/,"");closeOverlay();
   if(h.indexOf("sheet-")===0){S.view="sheet";S.docId=h.slice(6);}
   else if(h.indexOf("inv-")===0){S.view="invoice";S.docId=h.slice(4);}
+  else if(h.indexOf("jobedit-")===0){S.view="jobedit";S.docId=h.slice(8);}
   else if(h.indexOf("job-")===0){const id=h.slice(4);if(S.view!=="job"||S.docId!==id){S.jobTab="locs";S.pf={q:"",st:""};}S.view="job";S.docId=id;}
   else if(["invoices","addjob","addjob-new","rates","sheets"].includes(h))S.view=h;else S.view="overview";
   if(role()==="crew"&&!["overview","job","sheet","sheets"].includes(S.view))S.view="overview";
   if(S.view==="rates"&&!canRates())S.view="overview";
-  const nav={sheet:"overview",sheets:"overview",job:"overview",invoice:"invoices","addjob-new":"addjob"}[S.view]||S.view;
+  const nav={sheet:"overview",sheets:"overview",job:"overview",invoice:"invoices","addjob-new":"addjob",jobedit:"addjob"}[S.view]||S.view;
+  if(S.view!=="jobedit")S.jobEdit=null;
   document.querySelectorAll("[data-nav]").forEach(a=>{if(a.dataset.nav===nav)a.setAttribute("aria-current","page");else a.removeAttribute("aria-current");});
   refresh();window.scrollTo(0,0);
 }
@@ -880,7 +883,7 @@ function refresh(){
   document.querySelectorAll("[data-nav=rates]").forEach(a=>a.hidden=!canRates());
   const v=S.view;
   if(v==="sheet")renderSheet();else if(v==="invoice")renderInvoice();else if(v==="invoices")renderInvoices();
-  else if(v==="job")renderJob();else if(v==="addjob")renderAddJob();else if(v==="addjob-new")renderAddJobForm();else if(v==="rates")renderRates();else if(v==="sheets")renderSheets();else renderOverview();
+  else if(v==="job")renderJob();else if(v==="addjob")renderAddJob();else if(v==="addjob-new")renderAddJobForm();else if(v==="jobedit")renderJobEdit();else if(v==="rates")renderRates();else if(v==="sheets")renderSheets();else renderOverview();
 }
 
 /* ---------- pricing (rates from the template's Unit Rate Master; no rounding until display / final total) ---------- */
@@ -1088,7 +1091,7 @@ function renderJob(){
     '<div class="subtabs" role="tablist"><button role="tab" type="button" id="t-locs" aria-selected="'+(tab==="locs")+'">Locations</button><button role="tab" type="button" id="t-sheets" aria-selected="'+(tab==="sheets")+'">Unit sheets ('+ss.filter(s=>s.jobId===j.id).length+')</button></div><div id="jbody"></div>';
   document.getElementById("t-locs").onclick=()=>{S.jobTab="locs";renderJob();};document.getElementById("t-sheets").onclick=()=>{S.jobTab="sheets";renderJob();};
   const on=(i,fn)=>{const b=document.getElementById(i);if(b)b.onclick=fn;};
-  on("jb-sheet",()=>openSheetForm(null,j.id));on("jb-pkg",()=>openAddLocations(j.id,true));main.querySelectorAll("[data-pk]").forEach(b=>b.onclick=()=>openPackage(j.packages[+b.dataset.pk],b));on("jb-print",()=>openPrintPicker(j.id));on("jb-add",()=>openAddLocations(j.id));on("jb-edit",()=>openJobForm(j.id));
+  on("jb-sheet",()=>openSheetForm(null,j.id));on("jb-pkg",()=>openAddLocations(j.id,true));main.querySelectorAll("[data-pk]").forEach(b=>b.onclick=()=>openPackage(j.packages[+b.dataset.pk],b));on("jb-print",()=>openPrintPicker(j.id));on("jb-add",()=>openAddLocations(j.id));on("jb-edit",()=>{location.hash="jobedit-"+j.id;});
   on("jb-csv",()=>{const sx=sheets();const head=["#","Ticket ID","Town","Street","ES Pole #","VZ Pole #","PDF Page","WO / Job #","Pricing Area","Date Set","Status","Sheets","Notes"];
     const lines=[head].concat((j.poles||[]).map(p=>{const sh=sx.filter(s=>s.jobId===j.id&&s.poleId===p.id);return[p.n,p.ticket,p.town,p.street,p.esPole,p.vzPole,p.pdfPage,p.woJob||j.wo,poleArea(j,p),p.dateSet,poleStatus(sh)[0],sh.map(s=>s.no).join(" "),p.notes];}));
     download(new Blob(["﻿"+lines.map(r=>r.map(v=>'"'+String(v==null?"":v).replace(/"/g,'""')+'"').join(",")).join("\r\n")],{type:"text/csv"}),"Locations - "+j.name+".csv");});
@@ -1178,16 +1181,17 @@ function locGrid(host,state){
     (state.pkg?'<label class="btn primary" for="lg-pkg-in" style="cursor:pointer">Upload job package (PDF)<input type="file" id="lg-pkg-in" accept="application/pdf,.pdf" hidden></label>':"")+'<label class="btn" for="lg-file" style="cursor:pointer">Upload sheet (.xlsx / .csv)<input type="file" id="lg-file" accept=".xlsx,.xlsm,.csv,.txt" hidden></label><button class="btn" type="button" id="lg-paste-t">Paste from Excel</button><span class="sub" id="lg-info"></span></div>'+
     '<div id="lg-sheetw" class="row-inline" hidden><label class="f" for="lg-sheet">Worksheet<select id="lg-sheet"></select></label></div>'+
     '<div class="pastebox" id="lg-paste" hidden><p class="sub" style="margin:0 0 6px">Copy the rows from Excel (include the header row if there is one) and paste them here.</p><textarea id="lg-paste-box" aria-label="Paste rows from Excel"></textarea><div class="row-inline" style="margin-top:6px"><button class="btn primary" type="button" id="lg-paste-go">Use pasted rows</button></div></div>'+
-    '<div id="lg-pkgst"></div><div id="lg-warn"></div><div class="grid-edit"><table><thead><tr><th class="nosort">#</th>'+LOC_COLS.map(c=>'<th class="nosort">'+esc(c[1])+"</th>").join("")+'<th class="nosort"></th></tr></thead><tbody id="lg-body"></tbody></table></div>';
+    (state.bulk?'<div class="row-inline"><label class="f" for="lg-barea">Set pricing area on all rows<select id="lg-barea"><option value="">Job default</option>'+areas.map(a=>"<option>"+esc(a)+"</option>").join("")+'</select></label><button class="btn" type="button" id="lg-barea-go">Apply to all rows</button></div>':"")+'<div id="lg-pkgst"></div><div id="lg-warn"></div><div class="grid-edit"><table><thead><tr><th class="nosort">#</th>'+LOC_COLS.map(c=>'<th class="nosort">'+esc(c[1])+"</th>").join("")+'<th class="nosort"></th></tr></thead><tbody id="lg-body"></tbody></table></div>';
   const body=host.querySelector("#lg-body");const info=host.querySelector("#lg-info");
   function draw(){
-    body.innerHTML=state.rows.map((L,i)=>'<tr data-i="'+i+'"'+(L._check?' class="chk" title="Check: '+esc(L._check)+'"':"")+'><td class="mono sub">'+(state.start+i)+(L._check?' <span class="late" aria-label="check this row">⚠</span>':"")+"</td>"+LOC_COLS.map(c=>"<td>"+(c[2]==="area"?'<select data-k="area" aria-label="Pricing area row '+(i+1)+'"><option value="">Job default</option>'+areas.map(a=>"<option"+(a===L.area?" selected":"")+">"+esc(a)+"</option>").join("")+"</select>":'<input class="'+c[2]+'" data-k="'+c[0]+'" value="'+esc(L[c[0]])+'" aria-label="'+esc(c[1].replace(" *",""))+" row "+(i+1)+'">')+"</td>").join("")+'<td><button class="btn sm danger" type="button" data-rm aria-label="Remove row '+(i+1)+'">✕</button></td></tr>').join("")||'<tr><td colspan="12" class="sub" style="padding:14px">Enter how many locations, upload a sheet, or paste from Excel.</td></tr>';
+    body.innerHTML=state.rows.map((L,i)=>'<tr data-i="'+i+'"'+(L._check?' class="chk" title="Check: '+esc(L._check)+'"':"")+'><td class="mono sub">'+(L._n!=null?L._n:(state.start+i))+(L._check?' <span class="late" aria-label="check this row">⚠</span>':"")+"</td>"+LOC_COLS.map(c=>"<td>"+(c[2]==="area"?'<select data-k="area" aria-label="Pricing area row '+(i+1)+'"><option value="">Job default</option>'+areas.map(a=>"<option"+(a===L.area?" selected":"")+">"+esc(a)+"</option>").join("")+"</select>":'<input class="'+c[2]+'" data-k="'+c[0]+'" value="'+esc(L[c[0]])+'" aria-label="'+esc(c[1].replace(" *",""))+" row "+(i+1)+'">')+"</td>").join("")+'<td>'+(L._locked?'<span class="sub" title="'+esc(L._locked)+'">🔒</span>':'<button class="btn sm danger" type="button" data-rm aria-label="Remove row '+(i+1)+'">✕</button>')+'</td></tr>').join("")||'<tr><td colspan="12" class="sub" style="padding:14px">Enter how many locations, upload a sheet, or paste from Excel.</td></tr>';
     body.querySelectorAll("tr[data-i]").forEach(tr=>{const i=+tr.dataset.i;tr.querySelectorAll("[data-k]").forEach(inp=>{const ev=inp.tagName==="SELECT"?"onchange":"oninput";inp[ev]=()=>{state.rows[i][inp.dataset.k]=inp.value;if(state.rows[i]._check){delete state.rows[i]._check;tr.classList.remove("chk");tr.removeAttribute("title");const w=tr.querySelector(".late");if(w)w.remove();}};});
-      tr.querySelector("[data-rm]").onclick=()=>{state.rows.splice(i,1);host.querySelector("#lg-count").value=state.rows.length;draw();};});
+      const rmb=tr.querySelector("[data-rm]");if(rmb)rmb.onclick=()=>{state.rows.splice(i,1);host.querySelector("#lg-count").value=state.rows.length;draw();};});
     info.textContent=state.rows.length?state.rows.length+" location"+(state.rows.length===1?"":"s"):"";}
   function setRows(rows,warn){state.rows=rows;host.querySelector("#lg-count").value=rows.length;host.querySelector("#lg-warn").innerHTML=warn&&warn.length?'<div class="banner">'+warn.slice(0,10).map(esc).join("<br>")+(warn.length>10?"<br>…and "+(warn.length-10)+" more":"")+"</div>":"";draw();}
   host.querySelector("#lg-set").onclick=()=>{const n=Math.max(0,Math.min(500,parseInt(host.querySelector("#lg-count").value,10)||0));
-    const filled=state.rows.slice(n).filter(L=>Object.values(L).some(Boolean)).length;
+    const cut=state.rows.slice(n);const lk=cut.filter(L=>L._locked);if(lk.length){toast(lk.length+" of those rows have unit sheets and can't be removed. Remove other rows with ✕ instead.",8000);return;}
+    const filled=cut.filter(L=>Object.keys(L).some(k=>k[0]!=="_"&&L[k])).length;
     if(filled&&!confirm(filled+" filled row(s) will be removed. Continue?"))return;
     while(state.rows.length<n)state.rows.push(emptyLoc());state.rows.length=n;draw();};
   host.querySelector("#lg-paste-t").onclick=()=>{const p=host.querySelector("#lg-paste");p.hidden=!p.hidden;};
@@ -1200,6 +1204,7 @@ function locGrid(host,state){
     try{if(/\.(csv|txt)$/i.test(f.name)){book=null;host.querySelector("#lg-sheetw").hidden=true;const r=rowsFromTable(parseCsv(await f.text()));setRows(r.rows,r.warn);}
       else{book=await TMPL.tables(await f.arrayBuffer());sheetSel.innerHTML=book.names.map(n=>"<option>"+esc(n)+"</option>").join("");host.querySelector("#lg-sheetw").hidden=book.names.length<2;await loadSheet();}
     }catch(e){info.textContent="";toast("Couldn't read that file: "+errText(e),8000);}ev.target.value="";};
+  const ba=host.querySelector("#lg-barea-go");if(ba)ba.onclick=()=>{const v=host.querySelector("#lg-barea").value;state.rows.forEach(L=>L.area=v);draw();toast("Pricing area set to "+(v||"job default")+" on "+state.rows.length+" row(s). Save to keep it.");};
   const pin=host.querySelector("#lg-pkg-in");
   const pkgSt=()=>{host.querySelector("#lg-pkgst").innerHTML=state.pkgFile?'<div class="okbox">Job package <b>'+esc(state.pkgFile.name)+"</b> ("+fmtSize(state.pkgFile.size)+') will be attached to the job when you save. <button class="btn sm" type="button" id="lg-pkg-x">Remove</button></div>':"";
     const x=host.querySelector("#lg-pkg-x");if(x)x.onclick=()=>{state.pkgFile=null;pkgSt();};};
@@ -1264,9 +1269,10 @@ function renderAddJob(){
   const just=S.justAdded&&jobById(S.justAdded);S.justAdded=null;
   main.innerHTML='<section class="jobhead"><div><h1>Add Job</h1><div class="meta">'+list.length+" job"+(list.length===1?"":"s")+' set up</div></div><div class="acts"><button class="btn primary" type="button" id="aj-new">+ Add another job</button></div></section>'+
     (just?'<div class="okbox">Job <b>'+esc(just.name)+"</b> was created with "+(just.poles||[]).length+' location(s). <a href="#job-'+esc(just.id)+'">Open it</a> or add another job.</div>':"")+
-    '<div class="tablebox"><table><thead><tr><th class="nosort">Job</th><th class="nosort">Customer</th><th class="nosort">PO</th><th class="nosort">WO / Job #</th><th class="nosort">Town / area</th><th class="nosort">General Foreman</th><th class="nosort">Est. start</th><th class="nosort">Est. finish</th><th class="nosort">Locations</th><th class="nosort">Job package</th><th class="nosort">Status</th></tr></thead><tbody id="aj-list"></tbody></table></div>';
+    '<div class="tablebox"><table><thead><tr><th class="nosort">Job</th><th class="nosort">Customer</th><th class="nosort">PO</th><th class="nosort">WO / Job #</th><th class="nosort">Town / area</th><th class="nosort">General Foreman</th><th class="nosort">Est. start</th><th class="nosort">Est. finish</th><th class="nosort">Locations</th><th class="nosort">Job package</th><th class="nosort">Status</th><th class="nosort"></th></tr></thead><tbody id="aj-list"></tbody></table></div>';
   const tb=document.getElementById("aj-list");
-  tb.innerHTML=list.map(j=>'<tr tabindex="0" data-id="'+esc(j.id)+'"><td><div class="job-name">'+esc(j.name)+"</div></td><td>"+esc(j.customer)+'</td><td class="mono">'+esc(j.po)+'</td><td class="mono">'+esc(j.wo)+"</td><td>"+esc(j.town)+"</td><td>"+esc(j.gf)+"</td><td>"+fmtD(j.estStart)+"</td><td>"+fmtD(j.estFinish)+'</td><td class="mono">'+(j.poles||[]).length+"</td><td>"+((j.packages||[]).length?esc(j.packages.length+" file"+(j.packages.length===1?"":"s")):'<span class="sub">—</span>')+"</td><td>"+(j.archived?'<span class="chip c-stage">Closed</span>':'<span class="chip c-done">Active</span>')+"</td></tr>").join("")||'<tr><td colspan="11"><div class="empty"><b>No jobs yet</b>Use + Add another job.</div></td></tr>';
+  tb.innerHTML=list.map(j=>'<tr tabindex="0" data-id="'+esc(j.id)+'"><td><div class="job-name">'+esc(j.name)+"</div></td><td>"+esc(j.customer)+'</td><td class="mono">'+esc(j.po)+'</td><td class="mono">'+esc(j.wo)+"</td><td>"+esc(j.town)+"</td><td>"+esc(j.gf)+"</td><td>"+fmtD(j.estStart)+"</td><td>"+fmtD(j.estFinish)+'</td><td class="mono">'+(j.poles||[]).length+"</td><td>"+((j.packages||[]).length?esc(j.packages.length+" file"+(j.packages.length===1?"":"s")):'<span class="sub">—</span>')+"</td><td>"+(j.archived?'<span class="chip c-stage">Closed</span>':'<span class="chip c-done">Active</span>')+'</td><td><button class="btn sm" type="button" data-edit="'+esc(j.id)+'">Edit</button></td></tr>').join("")||'<tr><td colspan="12"><div class="empty"><b>No jobs yet</b>Use + Add another job.</div></td></tr>';
+  tb.querySelectorAll("[data-edit]").forEach(b=>b.onclick=ev=>{ev.stopPropagation();location.hash="jobedit-"+b.dataset.edit;});
   bindRows(tb,id=>location.hash="job-"+id);
   document.getElementById("aj-new").onclick=()=>{S.addJob=null;location.hash="addjob-new";};
 }
@@ -1302,6 +1308,49 @@ function openAddLocations(jid,startWithPackage){
     const pk=st.pkgFile?await storePackage(st.pkgFile):null;
     await commitIndex(ix=>{const t=ix.jobs.find(x=>x.id===jid);t.poles=t.poles||[];if(pk)(t.packages=t.packages||[]).push(pk);let n=t.poles.reduce((a,p)=>Math.max(a,p.n||0),0);c.used.forEach((L,i)=>t.poles.push(Object.assign({id:newId("p-")+i,n:++n},L)));},"Workflow: add locations");
     closeOverlay();refresh();toast((pk?"Package saved. ":"")+c.used.length+" location(s) added");});
+}
+
+
+/* ---------- Edit job page: job details + every location ---------- */
+function renderJobEdit(){
+  const j=jobById(S.docId);
+  if(!can.setup()||!j){main.innerHTML='<a class="back" href="#addjob">← Add Job</a><div class="empty"><b>'+(j?"Only billing can edit jobs":"Job not found")+"</b></div>";return;}
+  if(!S.jobEdit||S.jobEdit.id!==j.id){const sx=sheets().filter(s=>s.jobId===j.id);
+    S.jobEdit={id:j.id,f:Object.assign(blankJob(),j),archived:!!j.archived,orig:(j.poles||[]).map(p=>p.id),start:(j.poles||[]).reduce((a,p)=>Math.max(a,p.n||0),0)+1,bulk:true,pkg:true,existing:[],
+      rows:(j.poles||[]).slice().sort((a,b)=>(a.n||0)-(b.n||0)).map(p=>{const n=sx.filter(s=>s.poleId===p.id).length;return Object.assign(emptyLoc(),{ticket:p.ticket||"",town:p.town||"",street:p.street||"",esPole:p.esPole||"",vzPole:p.vzPole||"",pdfPage:p.pdfPage||"",woJob:p.woJob||"",area:p.area||"",dateSet:p.dateSet||"",notes:p.notes||"",_id:p.id,_n:p.n,_locked:n?n+" unit sheet(s) are logged here, so it can't be removed":""});})};}
+  const st=S.jobEdit;
+  main.innerHTML='<a class="back" href="#job-'+esc(j.id)+'">← '+esc(j.name)+'</a><section class="jobhead"><div><h1>Edit job</h1><div class="meta">Change the job details, pricing area, WO, and any location. Add rows for new locations, or remove ones that have no unit sheets (🔒 = has sheets). Nothing changes until you click Save changes.</div></div></section>'+
+    '<section class="details" style="display:block"><fieldset style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))"><legend>Job</legend>'+jobFieldsHtml("je",st.f)+'<label class="f chk" for="je-arch"><input type="checkbox" id="je-arch"'+(st.archived?" checked":"")+"> Closed (hide from crews)</label></fieldset></section>"+
+    '<h2 class="sec">Locations</h2><div id="je-grid"></div>'+
+    '<div class="row-inline" style="justify-content:flex-end;margin-top:4px"><span class="err" id="je-err" role="alert" style="margin:0 auto 0 0"></span><button class="btn" type="button" id="je-cancel">Cancel</button><button class="btn primary" type="button" id="je-save">Save changes</button></div>';
+  main.querySelectorAll("[id^=je-]").forEach(el=>{if(!/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)||el.id==="je-arch")return;el[el.tagName==="SELECT"?"onchange":"oninput"]=()=>{st.f[el.id.slice(3)]=el.value;};});
+  document.getElementById("je-arch").onchange=e=>{st.archived=e.target.checked;};
+  locGrid(document.getElementById("je-grid"),st);
+  document.getElementById("je-cancel").onclick=()=>{S.jobEdit=null;location.hash="job-"+j.id;};
+  document.getElementById("je-save").onclick=async e=>{const err=document.getElementById("je-err");err.textContent="";const b=e.target;
+    const v=readJobFields(main,"je");const fe=jobFieldErr(v,j.id);if(fe){err.textContent=fe;return;}v.archived=st.archived;
+    const c=checkLocs(st.rows,[]);if(c.errs.length){err.textContent=c.errs.slice(0,3).join(" ")+(c.errs.length>3?" (+"+(c.errs.length-3)+" more)":"");return;}
+    const keep=st.rows.filter(L=>Object.keys(L).some(k=>k[0]!=="_"&&String(L[k]).trim()));
+    const keptIds=new Set(keep.map(L=>L._id).filter(Boolean));const removed=st.orig.filter(id=>!keptIds.has(id));
+    const sx=sheets();const blocked=removed.filter(id=>sx.some(s=>s.jobId===j.id&&s.poleId===id));
+    if(blocked.length){err.textContent=blocked.length+" location(s) you removed now have unit sheets and can't be removed. Cancel and reopen Edit job.";return;}
+    if(removed.length&&!confirm("Remove "+removed.length+" location(s) from this job?"))return;
+    if(!canSave())return;b.disabled=true;
+    try{let pk=null;if(st.pkgFile){b.textContent="Uploading package…";pk=await storePackage(st.pkgFile);}
+      b.textContent="Saving…";const now=new Date().toISOString();const FIELDS=["ticket","town","street","esPole","vzPole","pdfPage","woJob","area","dateSet","notes"];
+      const summary=await commitIndex(ix=>{const t=(ix.jobs||[]).find(x=>x.id===j.id);if(!t)throw new Error("This job was removed by someone else.");
+        const changed=JOB_FIELDS.map(f=>f[0]).filter(k=>String(t[k]==null?"":t[k])!==v[k]);if(!!t.archived!==v.archived)changed.push(v.archived?"closed":"reopened");
+        Object.assign(t,v,{updatedAt:now,updatedBy:S.me.name});
+        const byId=new Map((t.poles||[]).map(p=>[p.id,p]));let n=(t.poles||[]).reduce((a,p)=>Math.max(a,p.n||0),0);let upd=0,add=0;const out=[];
+        keep.forEach((L,i)=>{const cl={};FIELDS.forEach(k=>cl[k]=String(L[k]==null?"":L[k]).trim());
+          if(L._id&&byId.has(L._id)){const p=byId.get(L._id);const ch=FIELDS.filter(k=>String(p[k]==null?"":p[k])!==cl[k]);if(ch.length){Object.assign(p,cl);(p.log=p.log||[]).push({t:now,by:S.me.name,text:"Changed "+ch.join(", ")});upd++;}out.push(p);byId.delete(L._id);}
+          else{out.push(Object.assign({id:newId("p-")+i,n:++n},cl));add++;}});
+        byId.forEach((p,id)=>{if(!removed.includes(id))out.push(p);});/* keep locations someone else added meanwhile */
+        t.poles=out;if(pk)(t.packages=t.packages||[]).push(pk);
+        (t.log=t.log||[]).push({t:now,by:S.me.name,text:"Edited job"+(changed.length?": "+changed.join(", "):"")+"; locations "+upd+" changed, "+add+" added, "+removed.length+" removed"});
+        return{changed,upd,add,rem:removed.length};},"Workflow: edit job");
+      S.jobEdit=null;toast("Saved: "+(summary.changed.length?summary.changed.join(", ")+"; ":"")+summary.upd+" location(s) changed, "+summary.add+" added, "+summary.rem+" removed",7000);location.hash="job-"+j.id;}
+    catch(x){err.textContent=errText(x);}finally{b.disabled=false;b.textContent="Save changes";}};
 }
 
 /* ---------- jobs ---------- */
