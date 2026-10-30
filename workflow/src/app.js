@@ -2,13 +2,14 @@
 "use strict";
 /* ---------- constants ---------- */
 const ST={SUB:"submitted",RET:"returned",GF:"gf_approved",OK:"approved",INV:"invoiced"};
-const ST_LABEL={submitted:"Awaiting GF signature",returned:"Returned to field",gf_approved:"Ready to bill",approved:"Ready to bill",invoiced:"Invoiced"};
+const ST_LABEL={submitted:"Awaiting CM signature",returned:"Returned to field",gf_approved:"Ready to bill",approved:"Ready to bill",invoiced:"Invoiced"};
 /* GF signature moves a sheet straight to Ready to bill; gf_approved is kept only for sheets approved under the old two-step flow */
 const isReady=d=>d.status===ST.OK||d.status===ST.GF;
 const ST_CHIP={submitted:"c-sch",returned:"c-bad",gf_approved:"c-done",approved:"c-done",invoiced:"c-stage"};
 const ST_ORDER=[ST.SUB,ST.RET,ST.GF,ST.OK,ST.INV];
-const ROLES={admin:"Admin",approver:"Billing approver",gf:"General Foreman",crew:"Crew",viewer:"Viewer"};
-const ROLE_HELP={admin:"Admin — everything, incl. logins, jobs, rates",approver:"Billing approver — final approval, invoices",gf:"General Foreman — review and approve crew sheets",crew:"Crew — submit daily unit sheets",viewer:"Viewer — read only"};
+const ROLES={admin:"Admin",approver:"Billing approver",gf:"Construction Manager",crew:"General Foreman",viewer:"Viewer"};
+/* internal role keys are unchanged so existing logins keep working: crew = General Foreman (fills out sheets), gf = Construction Manager (signs off) */
+const ROLE_HELP={admin:"Admin — everything, incl. logins, jobs, billing and invoicing",approver:"Billing approver — final approval, invoices",gf:"Construction Manager — review and sign off unit sheets",crew:"General Foreman — fill out and submit unit sheets",viewer:"Viewer — read only"};
 const CK="pole set|c k";
 /* Crew Daily Unit Checklist, in the order printed on the paper sheet */
 const CREW_SECTIONS=[
@@ -281,8 +282,8 @@ function openLogins(){
       '<div class="sec-h" style="margin:4px 0 0">Add a login</div><fieldset style="grid-template-columns:1fr 1fr">'+
       '<label class="f" for="nu-name">Full name<input id="nu-name" autocomplete="off"></label>'+
       '<label class="f" for="nu-user">Username<input id="nu-user" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="e.g. jdoe"></label>'+
-      '<label class="f" for="nu-role">Role<select id="nu-role">'+["crew","gf","approver","viewer","admin"].map(r=>'<option value="'+r+'">'+esc(ROLE_HELP[r])+"</option>").join("")+'</select></label>'+
-      '<label class="f" for="nu-crew">Crew / lead (crew logins)<input id="nu-crew" autocomplete="off" placeholder="optional"></label>'+
+      '<label class="f" for="nu-role">Role<select id="nu-role">'+["crew","gf","viewer","admin"].map(r=>'<option value="'+r+'">'+esc(ROLE_HELP[r])+"</option>").join("")+'</select></label>'+
+      '<label class="f" for="nu-crew">Crew / lead (General Foreman logins)<input id="nu-crew" autocomplete="off" placeholder="optional"></label>'+
       '<label class="f wide" for="nu-pw">Password<input id="nu-pw" type="text" autocomplete="off" spellcheck="false"></label></fieldset>'+
       '<div class="row-inline"><button class="btn" type="button" id="nu-gen">Generate password</button><span class="sub">At least 10 characters. Give the username and password to the person directly.</span></div><div id="nu-done"></div>';
   };
@@ -364,10 +365,10 @@ function renderSheets(){
   const all=visibleSheets();
   const cnt=s=>all.filter(x=>x.status===s).length;
   const crew=role()==="crew";
-  main.innerHTML=(crew?'<div class="cta"><div><b>My unit sheets</b><span class="sub">Fill out one sheet per location and submit it. Your General Foreman signs it off.</span></div><div class="acts" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn big w-only" type="button" id="cta-upl">Upload filled sheets</button><button class="btn primary big w-only" type="button" id="cta-new">+ New unit sheet</button></div></div>':'<a class="back" href="#overview">← Overview</a>')+
+  main.innerHTML=(crew?'<div class="cta"><div><b>My unit sheets</b><span class="sub">Fill out one sheet per location and submit it. Your Construction Manager signs it off.</span></div><div class="acts" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn big w-only" type="button" id="cta-upl">Upload filled sheets</button><button class="btn primary big w-only" type="button" id="cta-new">+ New unit sheet</button></div></div>':'<a class="back" href="#overview">← Overview</a>')+
     '<h2 class="sec">Workflow</h2><section class="tiles">'+
-    tile("Awaiting GF",cnt(ST.SUB),"Crew sheets to review",false)+tile("Returned to field",cnt(ST.RET),"Sent back for fixes",cnt(ST.RET)>0)+
-    tile("Ready to bill",cnt(ST.OK)+cnt(ST.GF),"Signed by the GF",false)+tile("Invoiced",cnt(ST.INV),"On an invoice",false)+"</section>"+
+    tile("Awaiting CM",cnt(ST.SUB),"Sheets to review",false)+tile("Returned to field",cnt(ST.RET),"Sent back for fixes",cnt(ST.RET)>0)+
+    tile("Ready to bill",cnt(ST.OK)+cnt(ST.GF),"Signed by the CM",false)+tile("Invoiced",cnt(ST.INV),"On an invoice",false)+"</section>"+
     '<div class="filters" role="search"><input type="search" id="f-q" placeholder="Search sheet #, street, pole, ticket, crew…" aria-label="Search unit sheets" value="'+esc(S.f.q)+'">'+
     '<select id="f-st" aria-label="Status"><option value="open">All open (not invoiced)</option><option value="">All sheets</option>'+[ST.SUB,ST.RET,ST.OK,ST.INV].map(s=>'<option value="'+s+'">'+esc(ST_LABEL[s])+"</option>").join("")+'<option value="hold">On hold</option></select>'+
     '<select id="f-job" aria-label="Job"><option value="">All jobs</option>'+jobs().map(j=>'<option value="'+esc(j.id)+'">'+esc(j.name)+"</option>").join("")+'</select><span class="count" id="f-count"></span></div>'+
@@ -410,9 +411,9 @@ function renderSheet(){
   const acts=[];
   if(can.editSheet(d))acts.push('<button class="btn" type="button" id="a-edit">'+(d.status===ST.RET&&role()==="crew"?"Fix &amp; resubmit":"Edit sheet")+"</button>");
   if(can.hold(d))acts.push('<button class="btn" type="button" id="a-hold">'+(d.hold&&d.hold.on?"Release hold":"Hold")+"</button>");
-  if(can.gf(d))acts.push('<button class="btn danger" type="button" id="a-gfret">Return to field</button><button class="btn primary" type="button" id="a-gfok">GF sign &amp; approve</button>');
+  if(can.gf(d))acts.push('<button class="btn danger" type="button" id="a-gfret">Return to field</button><button class="btn primary" type="button" id="a-gfok">CM sign &amp; approve</button>');
   if(can.bill(d))acts.push('<button class="btn danger" type="button" id="a-bret">Return</button><button class="btn primary" type="button" id="a-bok">Approve for invoice</button>');
-  if(can.reopen(d))acts.push('<button class="btn" type="button" id="a-reopen">Send back to GF</button>');
+  if(can.reopen(d))acts.push('<button class="btn" type="button" id="a-reopen">Send back to CM</button>');
   if(d.status===ST.INV&&d.invoiceId&&can.seePrice())acts.push('<a class="btn" href="#inv-'+esc(d.invoiceId)+'">Open invoice '+esc(d.invoiceNo||"")+"</a>");
   const ret=d.status===ST.RET&&d.returnNote?'<div class="banner bad"><b>Returned by '+esc(d.returnedBy||"")+":</b> "+esc(d.returnNote)+"</div>":"";
   const hold=d.hold&&d.hold.on?'<div class="banner"><b>On hold — '+esc(d.hold.by)+":</b> "+esc(d.hold.note)+"</div>":"";
@@ -421,8 +422,8 @@ function renderSheet(){
     '<section class="details">'+dl("Date",esc(fmtD(d.workDate)))+dl("Crew / lead",esc(d.crew))+dl("AWC",esc(d.awc))+dl("Work order #",esc(d.wo))+dl("FWO #",esc(d.fwo))+dl("Pole set?",esc(d.poleSet==="yes"?"Yes":d.poleSet==="no"?"No":""))+
       dl("Pole # / location",esc(p?p.esPole+" — "+p.street+", "+p.town:(d.poleText?d.poleText+" (not on packet list)":"")),true)+
       (p?dl("Ticket ID",esc(p.ticket))+dl("VZ pole #",esc(p.vzPole))+dl("Pricing area",esc(poleArea(j,p))||'<span class="late">Not set</span>'):"")+
-      dl("Submitted",esc(d.createdBy+" · "+fmtT(d.submittedAt||d.createdAt)))+dl("GF signature",d.gfAt?'<span class="sig">✔ Approved by '+esc(d.gfBy)+"</span> · "+esc(fmtT(d.gfAt)):"")+(d.billAt?dl("Billing approval",esc(d.billBy+" · "+fmtT(d.billAt))):"")+(can.seePrice()?dl("Invoice",esc(d.invoiceNo||"")):"")+
-      (d.source?dl("Uploaded from",'<button class="btn sm" type="button" id="a-src">'+esc(d.source.name)+"</button> page "+esc(d.source.page)):"")+(d.notes?dl("Notes / extras / difficulty justification",esc(d.notes),true):"")+(d.gfNote?dl("GF note",esc(d.gfNote),true):"")+(d.billNote?dl("Billing note",esc(d.billNote),true):"")+"</section>"+
+      dl("Submitted",esc(d.createdBy+" · "+fmtT(d.submittedAt||d.createdAt)))+dl("CM signature",d.gfAt?'<span class="sig">✔ Approved by '+esc(d.gfBy)+"</span> · "+esc(fmtT(d.gfAt)):"")+(d.billAt?dl("Billing approval",esc(d.billBy+" · "+fmtT(d.billAt))):"")+(can.seePrice()?dl("Invoice",esc(d.invoiceNo||"")):"")+
+      (d.source?dl("Uploaded from",'<button class="btn sm" type="button" id="a-src">'+esc(d.source.name)+"</button> page "+esc(d.source.page)):"")+(d.notes?dl("Notes / extras / difficulty justification",esc(d.notes),true):"")+(d.gfNote?dl("CM note",esc(d.gfNote),true):"")+(d.billNote?dl("Billing note",esc(d.billNote),true):"")+"</section>"+
     '<h2 class="sec">Units</h2>'+sheetLinesHtml(d)+'<h2 class="sec">Photos</h2>'+photosSectionHtml(d)+'<h2 class="sec">History</h2>'+histHtml(d);
   fillPhotoImgs(main);main.querySelectorAll("[data-open-photo]").forEach(a=>a.onclick=ev=>{ev.preventDefault();openPhoto(d,a.dataset.openPhoto);});
   const on=(sel,fn)=>{const b=document.getElementById(sel);if(b)b.onclick=fn;};
@@ -431,11 +432,11 @@ function renderSheet(){
   on("a-hold",()=>{const h=d.hold&&d.hold.on;confirmBox(h?"Release hold on "+d.no+"?":"Put "+d.no+" on hold?",h?"The sheet continues through approval.":"The sheet stays where it is but is flagged and can't be invoiced until the hold is released.",h?"Release hold":"Hold",async n=>{
     await commitDoc(id,x=>{x.hold=h?{on:false}:{on:true,note:n,by:S.me.name,at:new Date().toISOString()};},h?"Hold released"+(n?": "+n:""):"Put on hold: "+n);},{note:h?"Note":"Reason for hold",noteReq:!h});});
   on("a-gfok",()=>openGfSign([id]));
-  on("a-gfret",()=>confirmBox("Return "+d.no+" to the field?","The crew will see your note and can fix and resubmit the sheet.","Return to field",async n=>{await commitDoc(id,x=>{guard(ST.SUB)(x);x.status=ST.RET;x.returnNote=n;x.returnedBy=S.me.name;},"Returned to field: "+n);},{note:"What needs fixing",noteReq:true,danger:true}));
+  on("a-gfret",()=>confirmBox("Return "+d.no+" to the field?","The General Foreman will see your note and can fix and resubmit the sheet.","Return to field",async n=>{await commitDoc(id,x=>{guard(ST.SUB)(x);x.status=ST.RET;x.returnNote=n;x.returnedBy=S.me.name;},"Returned to field: "+n);},{note:"What needs fixing",noteReq:true,danger:true}));
   on("a-bok",()=>{const pr=priceSheet(d);
     confirmBox("Approve "+d.no+" for invoice?",(pr.errs.length?"Heads up: "+pr.errs.join("; ")+". It can be approved, but it can't go on an invoice until that is fixed. ":"")+(pr.total!=null?"Pole total: "+money(pr.total)+". ":"")+"Approved sheets are ready to put on an invoice.","Approve for invoice",async n=>{await commitDoc(id,x=>{guard(ST.GF)(x);x.status=ST.OK;x.billBy=S.me.name;x.billAt=new Date().toISOString();x.billNote=n||"";},"Billing approved for invoice"+(n?": "+n:""));},{note:"Billing note"});});
-  on("a-bret",()=>confirmBox("Return "+d.no+"?","It goes back to the field with your note. The GF will need to approve it again.","Return",async n=>{await commitDoc(id,x=>{guard(ST.GF)(x);x.status=ST.RET;x.returnNote=n;x.returnedBy=S.me.name;x.gfAt="";x.gfBy="";},"Returned by billing: "+n);},{note:"What needs fixing",noteReq:true,danger:true}));
-  on("a-reopen",()=>confirmBox("Send "+d.no+" back to the GF?","The GF signature is removed and the sheet returns to Awaiting GF signature.","Send back",async n=>{await commitDoc(id,x=>{if(!isReady(x))throw new Error("This sheet was already moved by someone else.");x.status=ST.SUB;x.gfAt="";x.gfBy="";x.gfSig=null;x.billAt="";x.billBy="";},"Sent back to the GF: "+n);},{note:"Reason",noteReq:true}));
+  on("a-bret",()=>confirmBox("Return "+d.no+"?","It goes back to the field with your note. The CM will need to approve it again.","Return",async n=>{await commitDoc(id,x=>{guard(ST.GF)(x);x.status=ST.RET;x.returnNote=n;x.returnedBy=S.me.name;x.gfAt="";x.gfBy="";},"Returned by billing: "+n);},{note:"What needs fixing",noteReq:true,danger:true}));
+  on("a-reopen",()=>confirmBox("Send "+d.no+" back to the CM?","The CM signature is removed and the sheet returns to Awaiting CM signature.","Send back",async n=>{await commitDoc(id,x=>{if(!isReady(x))throw new Error("This sheet was already moved by someone else.");x.status=ST.SUB;x.gfAt="";x.gfBy="";x.gfSig=null;x.billAt="";x.billBy="";},"Sent back to the GF: "+n);},{note:"Reason",noteReq:true}));
 }
 
 
@@ -514,7 +515,7 @@ function openSheetForm(id,presetJob){
     '<div><div class="sec-h">Other units</div><div id="sf-other" class="linelist"></div><button class="btn" type="button" id="sf-add-o" style="margin-top:8px">+ Add another unit</button></div>'+
     '<div><div class="sec-h">Photos of the location</div>'+photoSlotsHtml("sf",needPhotos())+"</div>"+
     '<label class="f wide" for="sf-notes">Notes / extras / difficulty justification<textarea id="sf-notes">'+esc(d.notes)+"</textarea></label>";
-  const m=modal(id?"Edit "+d.no:"Crew daily unit sheet",body,'<button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="sf-save">'+(id?(d.status===ST.RET?"Save &amp; resubmit":"Save changes"):"Submit to GF")+"</button>","wide");
+  const m=modal(id?"Edit "+d.no:"Daily unit sheet",body,'<button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="sf-save">'+(id?(d.status===ST.RET?"Save &amp; resubmit":"Save changes"):"Submit to CM")+"</button>","wide");
   const slots={before:{meta:d.photos&&d.photos.before||null},after:{meta:d.photos&&d.photos.after||null}};bindPhotoSlots(m,slots);
   const pq=m.querySelector("#sf-pq"),pbox=m.querySelector("#sf-poles"),jsel=m.querySelector("#sf-job");
   let selPole=d.poleId,notOnList=!d.poleId&&!!d.poleText;
@@ -551,11 +552,11 @@ function openSheetForm(id,presetJob){
     patch.photos=await savePhotos(slots);e.target.textContent="Saving…";
     if(!id){
       patch.status=ST.SUB;patch.submittedAt=new Date().toISOString();
-      const nid=await createDoc("sheet",patch,"Submitted "+lines.length+" unit line(s)"+(patch.photos.before||patch.photos.after?" with "+[patch.photos.before?"before":"",patch.photos.after?"after":""].filter(Boolean).join(" and ")+" photo":""));if(nid){closeOverlay();toast("Sheet submitted to the GF");location.hash="sheet-"+nid;}
+      const nid=await createDoc("sheet",patch,"Submitted "+lines.length+" unit line(s)"+(patch.photos.before||patch.photos.after?" with "+[patch.photos.before?"before":"",patch.photos.after?"after":""].filter(Boolean).join(" and ")+" photo":""));if(nid){closeOverlay();toast("Sheet submitted to the CM");location.hash="sheet-"+nid;}
     }else{
       const ch=diffLines(src.lines,lines);const resub=src.status===ST.RET;
       const ok=await commitDoc(id,x=>{if(x.status===ST.INV)throw new Error("This sheet is already invoiced.");Object.assign(x,patch);if(x.status===ST.RET){x.status=ST.SUB;x.submittedAt=new Date().toISOString();}},(resub?"Fixed and resubmitted. ":"Edited. ")+(ch||"No unit changes.")+(slots.before.blob||slots.after.blob?" Photo"+(slots.before.blob&&slots.after.blob?"s":"")+" updated: "+[slots.before.blob?"before":"",slots.after.blob?"after":""].filter(Boolean).join(", ")+".":""));
-      if(ok){closeOverlay();toast(resub?"Resubmitted to the GF":"Saved");}
+      if(ok){closeOverlay();toast(resub?"Resubmitted to the CM":"Saved");}
     }
   });
 }
@@ -575,15 +576,15 @@ function renderOverview(){
   const list=all.filter(j=>showClosed||!j.archived).sort((a,b)=>(a.archived?1:0)-(b.archived?1:0)||a.name.localeCompare(b.name));
   const cnt=s=>ss.filter(x=>x.status===s).length;const crew=role()==="crew";
   const tq=(k,v,s,st,alert)=>'<button type="button" class="tile tbtn'+(alert?" alert":"")+'" data-st="'+st+'"><span class="k">'+esc(k)+'</span><span class="v">'+esc(v)+'</span><span class="s">'+esc(s)+"</span></button>";
-  main.innerHTML=(crew?'<div class="cta"><div><b>Crew daily unit sheets</b><span class="sub">Fill out one sheet per location. Your General Foreman reviews each sheet before it goes to billing.</span></div><button class="btn primary big w-only" type="button" id="cta-new">+ New unit sheet</button></div>':"")+
+  main.innerHTML=(crew?'<div class="cta"><div><b>My unit sheets</b><span class="sub">Fill out one sheet per location. Your Construction Manager reviews each sheet before it goes to billing.</span></div><button class="btn primary big w-only" type="button" id="cta-new">+ New unit sheet</button></div>':"")+
     '<h2 class="sec">'+(crew?"My unit sheets":"Workflow")+'</h2><section class="tiles">'+
-    tq("Awaiting GF signature",cnt(ST.SUB),"Crew sheets to review",ST.SUB)+tq("Returned to field",cnt(ST.RET),"Sent back for fixes",ST.RET,cnt(ST.RET)>0)+
-    tq("Ready to bill",cnt(ST.OK)+cnt(ST.GF),"Signed by the GF",ST.OK)+tq("All open sheets",ss.filter(s=>s.status!==ST.INV).length,"Not yet invoiced","open")+"</section>"+
+    tq("Awaiting CM signature",cnt(ST.SUB),"Sheets to review",ST.SUB)+tq("Returned to field",cnt(ST.RET),"Sent back for fixes",ST.RET,cnt(ST.RET)>0)+
+    tq("Ready to bill",cnt(ST.OK)+cnt(ST.GF),"Signed by the CM",ST.OK)+tq("All open sheets",ss.filter(s=>s.status!==ST.INV).length,"Not yet invoiced","open")+"</section>"+
     '<div class="row-inline" style="justify-content:space-between;align-items:center"><h2 class="sec" style="margin:6px 0 0">Jobs</h2>'+(all.some(j=>j.archived)?'<label class="sub" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="ov-closed"'+(showClosed?" checked":"")+"> Show closed jobs</label>":"")+"</div>"+
-    '<div class="tablebox"><table><thead><tr><th class="nosort">Job</th><th class="nosort">Customer</th><th class="nosort">PO</th><th class="nosort">Locations</th><th class="nosort">Progress</th><th class="nosort">Awaiting GF</th><th class="nosort">Awaiting billing</th><th class="nosort">Ready to invoice</th>'+(can.seePrice()?'<th class="nosort num">Approved $</th>':"")+'<th class="nosort">Status</th></tr></thead><tbody id="ov-jobs"></tbody></table></div>';
+    '<div class="tablebox"><table><thead><tr><th class="nosort">Job</th><th class="nosort">Customer</th><th class="nosort">PO</th><th class="nosort">Locations</th><th class="nosort">Progress</th><th class="nosort">Awaiting CM</th><th class="nosort">Awaiting billing</th><th class="nosort">Ready to invoice</th>'+(can.seePrice()?'<th class="nosort num">Approved $</th>':"")+'<th class="nosort">Status</th></tr></thead><tbody id="ov-jobs"></tbody></table></div>';
   const tb=document.getElementById("ov-jobs");
   tb.innerHTML=list.length?list.map(j=>{const st=jobStats(j,ss);const pct=st.locs?st.doneLocs/st.locs:0;
-    return'<tr tabindex="0" data-id="'+esc(j.id)+'"><td><div class="job-name">'+esc(j.name)+'</div><div class="sub">'+esc([j.wo?"WO "+j.wo:"",j.town||"",j.gf?"GF "+j.gf:""].filter(Boolean).join(" · ")||j.desc)+"</div></td><td>"+esc(j.customer)+'</td><td class="mono">'+esc(j.po)+'</td><td class="mono">'+st.locs+'</td><td><div class="bar"><div class="track"><div class="fill" style="width:'+Math.round(pct*100)+'%"></div></div><span class="pct">'+st.doneLocs+"/"+st.locs+'</span></div><div class="sub">'+st.started+" started</div></td>"+
+    return'<tr tabindex="0" data-id="'+esc(j.id)+'"><td><div class="job-name">'+esc(j.name)+'</div><div class="sub">'+esc([j.wo?"WO "+j.wo:"",j.town||"",j.gf?"CM "+j.gf:""].filter(Boolean).join(" · ")||j.desc)+"</div></td><td>"+esc(j.customer)+'</td><td class="mono">'+esc(j.po)+'</td><td class="mono">'+st.locs+'</td><td><div class="bar"><div class="track"><div class="fill" style="width:'+Math.round(pct*100)+'%"></div></div><span class="pct">'+st.doneLocs+"/"+st.locs+'</span></div><div class="sub">'+st.started+" started</div></td>"+
       '<td class="mono">'+(st.sub||"")+'</td><td class="mono">'+(st.gf||"")+'</td><td class="mono">'+(st.ok||"")+"</td>"+(can.seePrice()?'<td class="mono num">'+(st.ok+st.inv?(st.apprOk?money(st.appr):'<span class="sub">Check pricing</span>'):"")+"</td>":"")+
       "<td>"+(j.archived?'<span class="chip c-stage">Closed</span>':'<span class="chip c-done">Active</span>')+(st.ret?' <span class="chip c-bad">'+st.ret+" returned</span>":"")+(st.hold?' <span class="chip c-bad">'+st.hold+" on hold</span>":"")+"</td></tr>";}).join("")
     :'<tr><td colspan="10"><div class="empty"><b>No jobs yet</b>'+(can.setup()?'Use <a href="#addjob">Add Job</a> to set up the first job and its locations.':"Billing sets up jobs before crews can log units.")+"</div></td></tr>";
@@ -598,15 +599,15 @@ const canGfSign=()=>W()&&(isAdmin()||role()==="gf");
 function unitsText(d){return(d.lines||[]).map(l=>unitInfo(l.key).item+" × "+fmtN(l.qty)).join(", ");}
 function gfTable(host,list,showJob){
   const sel=new Set();
-  host.innerHTML=list.length?'<div class="row-inline" style="margin-bottom:8px;align-items:center"><button class="btn sm" type="button" data-all>Select all</button><button class="btn sm" type="button" data-none>Clear</button><span class="sub" data-cnt></span><span style="margin-left:auto"></span><button class="btn primary" type="button" data-sign disabled>GF sign &amp; approve</button></div>'+
+  host.innerHTML=list.length?'<div class="row-inline" style="margin-bottom:8px;align-items:center"><button class="btn sm" type="button" data-all>Select all</button><button class="btn sm" type="button" data-none>Clear</button><span class="sub" data-cnt></span><span style="margin-left:auto"></span><button class="btn primary" type="button" data-sign disabled>CM sign &amp; approve</button></div>'+
     '<div class="tablebox"><table><thead><tr><th class="nosort" style="width:36px"></th><th class="nosort">Sheet #</th><th class="nosort">Work date</th>'+(showJob?'<th class="nosort">Job</th>':"")+'<th class="nosort">Location</th><th class="nosort">Crew / lead</th><th class="nosort">Units</th>'+(can.seePrice()?'<th class="nosort num">Amount</th>':"")+'<th class="nosort">Photos</th><th class="nosort">Notes</th></tr></thead><tbody>'+
     list.map(s=>{const pr=can.seePrice()?priceSheet(s):null;const held=s.hold&&s.hold.on;const j=jobById(s.jobId);
       return'<tr data-id="'+esc(s.id)+'"'+(held?' class="removed" title="On hold"':"")+'><td><input type="checkbox" data-s="'+esc(s.id)+'"'+(held?" disabled":"")+' aria-label="Select '+esc(s.no)+'"></td><td class="mono"><a href="#sheet-'+esc(s.id)+'"><b>'+esc(s.no)+"</b></a>"+(held?' <span class="chip c-bad">On hold</span>':"")+"</td><td>"+fmtD(s.workDate)+"</td>"+(showJob?"<td>"+esc(j?j.name:"")+"</td>":"")+'<td class="wrapc">'+esc(sheetPoleText(s))+"</td><td>"+esc(s.crew)+'</td><td class="wrapc">'+esc(unitsText(s))+"</td>"+
         (pr?'<td class="mono num">'+(pr.total==null?'<span class="sub" title="'+esc(pr.errs.join("; "))+'">Check pricing</span>':money(pr.total))+"</td>":"")+"<td>"+photoBadges(s)+'</td><td class="wrapc sub">'+esc(s.notes)+"</td></tr>";}).join("")+"</tbody></table></div>"
-    :'<div class="empty"><b>Nothing waiting for the GF</b>New unit sheets show up here to be signed.</div>';
+    :'<div class="empty"><b>Nothing waiting for the CM</b>New unit sheets show up here to be signed.</div>';
   if(!list.length)return;
   const boxes=[...host.querySelectorAll("[data-s]")];const btn=host.querySelector("[data-sign]");
-  const upd=()=>{sel.clear();boxes.forEach(b=>{if(b.checked)sel.add(b.dataset.s);});host.querySelector("[data-cnt]").textContent=sel.size?sel.size+" selected":"";btn.disabled=!sel.size;btn.textContent=sel.size?"GF sign & approve "+sel.size:"GF sign & approve";};
+  const upd=()=>{sel.clear();boxes.forEach(b=>{if(b.checked)sel.add(b.dataset.s);});host.querySelector("[data-cnt]").textContent=sel.size?sel.size+" selected":"";btn.disabled=!sel.size;btn.textContent=sel.size?"CM sign & approve "+sel.size:"CM sign & approve";};
   boxes.forEach(b=>b.onchange=upd);
   host.querySelector("[data-all]").onclick=()=>{boxes.forEach(b=>{if(!b.disabled)b.checked=true;});upd();};
   host.querySelector("[data-none]").onclick=()=>{boxes.forEach(b=>b.checked=false);upd();};
@@ -617,7 +618,7 @@ function openGfSign(ids){
   const list=ids.map(id=>Object.assign({id},S.docs.get(id))).filter(d=>d.type==="sheet"&&d.status===ST.SUB);
   if(!list.length){toast("Those sheets were already signed or moved.");return;}
   const tot=can.seePrice()?list.map(priceSheet):[];const known=tot.filter(x=>x.total!=null);const sum=known.reduce((a,x)=>a+x.total,0);
-  const m=modal("GF sign-off",'<p style="margin:0">'+list.length+" unit sheet"+(list.length===1?"":"s")+": "+esc(list.map(d=>d.no).join(", "))+"</p>"+
+  const m=modal("CM sign-off",'<p style="margin:0">'+list.length+" unit sheet"+(list.length===1?"":"s")+": "+esc(list.map(d=>d.no).join(", "))+"</p>"+
     (can.seePrice()&&known.length?'<p class="sub" style="margin:0">Total '+money(sum)+(known.length<list.length?" ("+(list.length-known.length)+" sheet(s) still need pricing fixed)":"")+"</p>":"")+
     '<label class="sigbox" for="gf-ok"><input type="checkbox" id="gf-ok"><span><b>Signed: '+esc(S.me.name)+'</b><br>I verified the units and quantities on '+(list.length===1?"this sheet":"these sheets")+" against the work completed in the field.</span></label>"+
     '<p class="sub" style="margin:0">Signing records your name with today\'s date and time and moves '+(list.length===1?"the sheet":"them")+" to Ready to bill.</p>",
@@ -626,7 +627,7 @@ function openGfSign(ids){
   go.onclick=e=>busyRun(e.target,m,async()=>{if(!ok.checked)throw new Error("Tick the signature box first.");if(!canSave())return;
     const at=new Date().toISOString();let n=0;const fail=[];
     for(const d of list){const r=await commitDoc(d.id,x=>{if(x.status!==ST.SUB)throw new Error(x.no+" was already moved by someone else.");if(x.hold&&x.hold.on)throw new Error(x.no+" is on hold.");
-        x.status=ST.OK;x.gfBy=S.me.name;x.gfAt=at;x.gfSig={name:S.me.name,user:S.me.username,at};x.returnNote="";},"GF signed & approved — signature: "+S.me.name,true);if(r)n++;else fail.push(d.no);}
+        x.status=ST.OK;x.gfBy=S.me.name;x.gfAt=at;x.gfSig={name:S.me.name,user:S.me.username,at};x.returnNote="";},"CM signed & approved — signature: "+S.me.name,true);if(r)n++;else fail.push(d.no);}
     closeOverlay();refresh();toast(n+" sheet(s) signed and moved to Ready to bill"+(fail.length?". Not signed: "+fail.join(", "):""),7000);},"Signing…");
 }
 
@@ -637,13 +638,13 @@ function renderJob(){
   const ss=visibleSheets();const st=jobStats(j,ss);const gfList=ss.filter(s=>s.jobId===j.id&&s.status===ST.SUB).sort((a,b)=>String(a.workDate).localeCompare(String(b.workDate))||String(a.no).localeCompare(String(b.no)));
   if(!S.jobTab)S.jobTab=canGfSign()&&gfList.length?"gf":"locs";const tab=S.jobTab;
   main.innerHTML='<a class="back" href="#overview">← Overview</a>'+
-    '<section class="jobhead"><div><h1>'+esc(j.name)+'</h1><div class="meta">'+(j.archived?'<span class="chip c-stage">Closed</span>':'<span class="chip c-done">Active</span>')+"<span>"+esc(j.customer)+"</span>"+(j.po?"<span>PO "+esc(j.po)+"</span>":"")+(j.wo?"<span>WO / Job # "+esc(j.wo)+"</span>":"")+(j.town?"<span>"+esc(j.town)+"</span>":"")+(j.gf?"<span>GF "+esc(j.gf)+"</span>":"")+(j.estStart||j.estFinish?"<span>Est. "+esc(fmtD(j.estStart)||"?")+" – "+esc(fmtD(j.estFinish)||"?")+"</span>":"")+'</div></div><div class="acts">'+
+    '<section class="jobhead"><div><h1>'+esc(j.name)+'</h1><div class="meta">'+(j.archived?'<span class="chip c-stage">Closed</span>':'<span class="chip c-done">Active</span>')+"<span>"+esc(j.customer)+"</span>"+(j.po?"<span>PO "+esc(j.po)+"</span>":"")+(j.wo?"<span>WO / Job # "+esc(j.wo)+"</span>":"")+(j.town?"<span>"+esc(j.town)+"</span>":"")+(j.gf?"<span>CM "+esc(j.gf)+"</span>":"")+(j.estStart||j.estFinish?"<span>Est. "+esc(fmtD(j.estStart)||"?")+" – "+esc(fmtD(j.estFinish)||"?")+"</span>":"")+'</div></div><div class="acts">'+
       (can.newSheet()&&!j.archived?'<button class="btn primary" type="button" id="jb-sheet">+ New unit sheet</button>':"")+
       (can.newSheet()&&!j.archived?'<button class="btn" type="button" id="jb-upl">Upload Unit Sheets</button>':"")+'<button class="btn" type="button" id="jb-print"'+((j.poles||[]).length?"":" disabled")+'>Print Unit Sheets</button>'+(can.setup()?'<button class="btn" type="button" id="jb-add">+ Add locations</button><button class="btn" type="button" id="jb-edit">Edit job</button>':"")+(role()!=="crew"?'<button class="btn" type="button" id="jb-csv">Export CSV</button>':"")+"</div></section>"+
     (!j.area&&(j.poles||[]).some(p=>!p.area)&&role()!=="crew"?'<div class="banner">No default pricing area is set for this job, so locations without their own area can\'t be priced. Set it with <b>Edit job</b>.</div>':"")+
     (role()!=="crew"&&((j.packages||[]).length||can.setup())?'<div class="pkgbar"><b>Job package</b>'+(j.packages||[]).map((pk,i)=>'<button class="btn sm" type="button" data-pk="'+i+'" title="Uploaded '+esc(fmtT(pk.at))+" by "+esc(pk.by)+'">'+esc(pk.name)+' <span class="sub">'+fmtSize(pk.size)+"</span></button>").join("")+((j.packages||[]).length?"":'<span class="sub">None uploaded</span>')+(can.setup()?'<button class="btn sm primary" type="button" id="jb-pkg">Upload package</button>':"")+"</div>":"")+
-    '<section class="tiles">'+tile("Locations",st.locs,st.started+" started",false)+tile("Awaiting GF signature",st.sub,"Crew sheets",st.sub>0)+tile("Ready to bill",st.ok,"Signed by the GF",false)+tile("Invoiced",st.inv,"Sheets on invoices",false)+(can.seePrice()?tile("Approved $",st.ok+st.inv?(st.apprOk?money(st.appr):"Check"):"$0.00","Ready + invoiced",false):"")+"</section>"+
-    '<div class="subtabs" role="tablist"><button role="tab" type="button" id="t-locs" aria-selected="'+(tab==="locs")+'">Locations</button><button role="tab" type="button" id="t-sheets" aria-selected="'+(tab==="sheets")+'">Unit sheets ('+ss.filter(s=>s.jobId===j.id).length+')</button>'+(canGfSign()?'<button role="tab" type="button" id="t-gf" aria-selected="'+(tab==="gf")+'">GF sign-off ('+gfList.length+")</button>":"")+'</div><div id="jbody"></div>';
+    '<section class="tiles">'+tile("Locations",st.locs,st.started+" started",false)+tile("Awaiting CM signature",st.sub,"Sheets to review",st.sub>0)+tile("Ready to bill",st.ok,"Signed by the CM",false)+tile("Invoiced",st.inv,"Sheets on invoices",false)+(can.seePrice()?tile("Approved $",st.ok+st.inv?(st.apprOk?money(st.appr):"Check"):"$0.00","Ready + invoiced",false):"")+"</section>"+
+    '<div class="subtabs" role="tablist"><button role="tab" type="button" id="t-locs" aria-selected="'+(tab==="locs")+'">Locations</button><button role="tab" type="button" id="t-sheets" aria-selected="'+(tab==="sheets")+'">Unit sheets ('+ss.filter(s=>s.jobId===j.id).length+')</button>'+(canGfSign()?'<button role="tab" type="button" id="t-gf" aria-selected="'+(tab==="gf")+'">CM sign-off ('+gfList.length+")</button>":"")+'</div><div id="jbody"></div>';
   document.getElementById("t-locs").onclick=()=>{S.jobTab="locs";renderJob();};document.getElementById("t-sheets").onclick=()=>{S.jobTab="sheets";renderJob();};const tg=document.getElementById("t-gf");if(tg)tg.onclick=()=>{S.jobTab="gf";renderJob();};
   const on=(i,fn)=>{const b=document.getElementById(i);if(b)b.onclick=fn;};
   on("jb-sheet",()=>openSheetForm(null,j.id));on("jb-pkg",()=>openAddLocations(j.id,true));main.querySelectorAll("[data-pk]").forEach(b=>b.onclick=()=>openPackage(j.packages[+b.dataset.pk],b));on("jb-print",()=>openPrintPicker(j.id));on("jb-upl",()=>openSheetUpload(j.id));on("jb-add",()=>openAddLocations(j.id));on("jb-edit",()=>{location.hash="jobedit-"+j.id;});
@@ -651,7 +652,7 @@ function renderJob(){
     const lines=[head].concat((j.poles||[]).map(p=>{const sh=sx.filter(s=>s.jobId===j.id&&s.poleId===p.id);return[p.n,p.ticket,p.town,p.street,p.esPole,p.vzPole,p.pdfPage,p.woJob||j.wo,poleArea(j,p),p.dateSet,poleStatus(sh)[0],sh.map(s=>s.no).join(" "),p.notes];}));
     download(new Blob(["﻿"+lines.map(r=>r.map(v=>'"'+String(v==null?"":v).replace(/"/g,'""')+'"').join(",")).join("\r\n")],{type:"text/csv"}),"Locations - "+j.name+".csv");});
   const box=document.getElementById("jbody");
-  if(tab==="gf"){if(!canGfSign())box.innerHTML='<p class="sub">Only a General Foreman or admin can sign.</p>';else gfTable(box,gfList,false);return;}
+  if(tab==="gf"){if(!canGfSign())box.innerHTML='<p class="sub">Only a Construction Manager or admin can sign.</p>';else gfTable(box,gfList,false);return;}
   if(tab==="sheets"){
     const rows=ss.filter(s=>s.jobId===j.id).sort((a,b)=>ST_ORDER.indexOf(a.status)-ST_ORDER.indexOf(b.status)||String(b.workDate).localeCompare(String(a.workDate)));
     box.innerHTML='<div class="tablebox"><table><thead><tr><th class="nosort">Sheet #</th><th class="nosort">Work date</th><th class="nosort">Location</th><th class="nosort">Crew / lead</th><th class="nosort">Units</th>'+(can.seePrice()?'<th class="nosort num">Amount</th>':"")+'<th class="nosort">Status</th></tr></thead><tbody id="jb-sh"></tbody></table></div>';
@@ -659,7 +660,7 @@ function renderJob(){
     tb.innerHTML=rows.map(s=>{const pr=can.seePrice()?priceSheet(s):null;return'<tr tabindex="0" data-id="'+esc(s.id)+'"><td class="mono"><b>'+esc(s.no)+"</b></td><td>"+fmtD(s.workDate)+'</td><td class="wrapc">'+esc(sheetPoleText(s))+"</td><td>"+esc(s.crew)+'</td><td class="mono">'+(s.lines||[]).length+"</td>"+(pr?'<td class="mono num">'+(pr.total==null?'<span class="sub">Check pricing</span>':money(pr.total))+"</td>":"")+"<td>"+stChip(s)+"</td></tr>";}).join("")||'<tr><td colspan="7"><div class="empty"><b>No unit sheets yet</b>Crews submit one sheet per location.</div></td></tr>';
     bindRows(tb,id=>location.hash="sheet-"+id);return;}
   const q=S.pf.q||"",stf=S.pf.st||"";
-  box.innerHTML='<div class="filters" style="margin-bottom:10px"><input type="search" id="pl-q" placeholder="Search street, pole #, ticket…" aria-label="Search locations" value="'+esc(q)+'"><select id="pl-st" aria-label="Status"><option value="">All statuses</option>'+["Not started","Awaiting GF signature","Returned to field","Ready to bill","Invoiced"].map(s=>"<option"+(s===stf?" selected":"")+">"+s+"</option>").join("")+'</select><span class="count" id="pl-count"></span></div>'+
+  box.innerHTML='<div class="filters" style="margin-bottom:10px"><input type="search" id="pl-q" placeholder="Search street, pole #, ticket…" aria-label="Search locations" value="'+esc(q)+'"><select id="pl-st" aria-label="Status"><option value="">All statuses</option>'+["Not started","Awaiting CM signature","Returned to field","Ready to bill","Invoiced"].map(s=>"<option"+(s===stf?" selected":"")+">"+s+"</option>").join("")+'</select><span class="count" id="pl-count"></span></div>'+
     '<div class="tablebox"><table><thead><tr><th class="nosort">#</th><th class="nosort">Ticket ID</th><th class="nosort">Town</th><th class="nosort">Street</th><th class="nosort">ES pole #</th><th class="nosort">VZ pole #</th><th class="nosort">PDF page</th><th class="nosort">Pricing area</th><th class="nosort">Sheets</th>'+(can.seePrice()?'<th class="nosort num">Approved $</th>':"")+'<th class="nosort">Status</th><th class="nosort">Notes</th><th class="nosort"></th></tr></thead><tbody id="pl-body"></tbody></table></div>';
   const qi=document.getElementById("pl-q"),si=document.getElementById("pl-st");qi.oninput=()=>{S.pf.q=qi.value;fill();};si.onchange=()=>{S.pf.st=si.value;fill();};
   function fill(){const tb=document.getElementById("pl-body");const qq=(S.pf.q||"").trim().toLowerCase();const sx=sheets();
@@ -729,7 +730,7 @@ function openSheetUpload(jid){
   const j=jobById(jid);
   const m=modal("Upload unit sheets — "+j.name,'<p class="sub" style="margin:0">Choose a PDF of filled-out Crew Daily Unit Checklists (the sheets printed from this job). Each page becomes one unit sheet for its location. Check every quantity against the paper before you submit — handwriting can be misread.</p>'+
     '<div class="row-inline"><label class="btn primary" for="su-file" style="cursor:pointer">Choose PDF<input type="file" id="su-file" accept="application/pdf,.pdf" hidden></label><span class="sub" id="su-info"></span></div><div id="su-warn"></div><div id="su-list"></div>',
-    '<button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="su-save" disabled>Submit to GF</button>',"wide");
+    '<button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="su-save" disabled>Submit to CM</button>',"wide");
   m.style.width="min(1100px,calc(100% - 24px))";
   let file=null,entries=[];const info=m.querySelector("#su-info"),list=m.querySelector("#su-list");
   const poles=(j.poles||[]).slice().sort((a,b)=>(a.n||0)-(b.n||0));
@@ -754,7 +755,7 @@ function openSheetUpload(jid){
       card.querySelectorAll("[data-rmq]").forEach(b=>b.onclick=()=>{delete e.qty[b.dataset.rmq];draw();});
       card.querySelector("[data-addk]").onchange=ev=>{if(ev.target.value){e.qty[ev.target.value]="";draw();}};});
     upd();}
-  function upd(){const n=entries.filter(e=>e.include).length;const b=m.querySelector("#su-save");b.textContent="Submit "+n+" sheet"+(n===1?"":"s")+" to GF";b.disabled=!n;}
+  function upd(){const n=entries.filter(e=>e.include).length;const b=m.querySelector("#su-save");b.textContent="Submit "+n+" sheet"+(n===1?"":"s")+" to CM";b.disabled=!n;}
   m.querySelector("#su-file").onchange=async ev=>{const f=ev.target.files[0];ev.target.value="";if(!f)return;
     if(f.size>PKG_MAX){toast(f.name+" is larger than 25 MB.",7000);return;}
     file=f;entries=[];list.innerHTML="";info.textContent="Reading "+f.name+"…";m.querySelector("#su-warn").innerHTML="";
@@ -784,7 +785,7 @@ function openSheetUpload(jid){
       const photos=await savePhotos(x.slots);
       const doc={photos,jobId:j.id,poleId:x.poleId,poleText:"",workDate:x.workDate,crew:x.crew.trim(),awc:x.awc.trim(),wo:x.wo.trim(),fwo:x.fwo.trim(),poleSet:x.poleSet,notes:x.notes.trim(),lines,status:ST.SUB,submittedAt:new Date().toISOString(),source:{file:src.file,name:src.name,page:x.page}};
       const id=await createDoc("sheet",doc,"Uploaded from "+src.name+" page "+x.page+" ("+lines.length+" unit line(s))");if(id)made++;else fails.push(x.page);}
-    closeOverlay();refresh();toast(made+" unit sheet(s) submitted to the GF"+(fails.length?". Pages not saved: "+fails.join(", "):""),9000);});
+    closeOverlay();refresh();toast(made+" unit sheet(s) submitted to the CM"+(fails.length?". Pages not saved: "+fails.join(", "):""),9000);});
 }
 
 /* ---------- location grid (Add Job / Add locations) ---------- */
@@ -864,7 +865,7 @@ function checkLocs(rows,existing){
     const t=L.ticket.trim().toUpperCase();if(t){if(seen.has(t))errs.push("Row "+(i+1)+": Ticket "+L.ticket+" is already on this job.");seen.add(t);}});
   return{used:used.map(L=>{const o={};Object.keys(L).forEach(k=>{if(k[0]!=="_")o[k]=String(L[k]==null?"":L[k]).trim();});return o;}),errs};}
 /* ---------- job fields (Add Job form + Edit job) ---------- */
-const JOB_FIELDS=[["name","Job name *","text",true],["customer","Customer (bill to) *","text"],["po","PO","text"],["wo","WO / Job #","text"],["town","Town / service area","text"],["gf","General Foreman","gf"],["estStart","Est. start","date"],["estFinish","Est. finish","date"],["area","Default pricing area","area"],["desc","Description","textarea",true]];
+const JOB_FIELDS=[["name","Job name *","text",true],["customer","Customer (bill to) *","text"],["po","PO","text"],["wo","WO / Job #","text"],["town","Town / service area","text"],["gf","Construction Manager","gf"],["estStart","Est. start","date"],["estFinish","Est. finish","date"],["area","Default pricing area","area"],["desc","Description","textarea",true]];
 const blankJob=()=>({name:"",customer:"Eversource",po:"",wo:"",town:"",gf:"",estStart:"",estFinish:"",area:"",desc:""});
 function gfNames(){const p=(S.index&&S.index.profiles)||{};return Object.values(p).filter(x=>x.role==="gf").map(x=>x.name).sort();}
 function jobFieldsHtml(pre,v){
@@ -899,7 +900,7 @@ function renderAddJob(){
   const just=S.justAdded&&jobById(S.justAdded);S.justAdded=null;
   main.innerHTML='<section class="jobhead"><div><h1>Add Job</h1><div class="meta">'+list.length+" job"+(list.length===1?"":"s")+' set up</div></div><div class="acts"><button class="btn primary" type="button" id="aj-new">+ Add another job</button></div></section>'+
     (just?'<div class="okbox">Job <b>'+esc(just.name)+"</b> was created with "+(just.poles||[]).length+' location(s). <a href="#job-'+esc(just.id)+'">Open it</a> or add another job.</div>':"")+
-    '<div class="tablebox"><table><thead><tr><th class="nosort">Job</th><th class="nosort">Customer</th><th class="nosort">PO</th><th class="nosort">WO / Job #</th><th class="nosort">Town / area</th><th class="nosort">General Foreman</th><th class="nosort">Est. start</th><th class="nosort">Est. finish</th><th class="nosort">Locations</th><th class="nosort">Job package</th><th class="nosort">Status</th><th class="nosort"></th></tr></thead><tbody id="aj-list"></tbody></table></div>';
+    '<div class="tablebox"><table><thead><tr><th class="nosort">Job</th><th class="nosort">Customer</th><th class="nosort">PO</th><th class="nosort">WO / Job #</th><th class="nosort">Town / area</th><th class="nosort">Construction Manager</th><th class="nosort">Est. start</th><th class="nosort">Est. finish</th><th class="nosort">Locations</th><th class="nosort">Job package</th><th class="nosort">Status</th><th class="nosort"></th></tr></thead><tbody id="aj-list"></tbody></table></div>';
   const tb=document.getElementById("aj-list");
   tb.innerHTML=list.map(j=>'<tr tabindex="0" data-id="'+esc(j.id)+'"><td><div class="job-name">'+esc(j.name)+"</div></td><td>"+esc(j.customer)+'</td><td class="mono">'+esc(j.po)+'</td><td class="mono">'+esc(j.wo)+"</td><td>"+esc(j.town)+"</td><td>"+esc(j.gf)+"</td><td>"+fmtD(j.estStart)+"</td><td>"+fmtD(j.estFinish)+'</td><td class="mono">'+(j.poles||[]).length+"</td><td>"+((j.packages||[]).length?esc(j.packages.length+" file"+(j.packages.length===1?"":"s")):'<span class="sub">—</span>')+"</td><td>"+(j.archived?'<span class="chip c-stage">Closed</span>':'<span class="chip c-done">Active</span>')+'</td><td><button class="btn sm" type="button" data-edit="'+esc(j.id)+'">Edit</button></td></tr>').join("")||'<tr><td colspan="12"><div class="empty"><b>No jobs yet</b>Use + Add another job.</div></td></tr>';
   tb.querySelectorAll("[data-edit]").forEach(b=>b.onclick=ev=>{ev.stopPropagation();location.hash="jobedit-"+b.dataset.edit;});
@@ -1005,7 +1006,7 @@ function poleStatus(sh){
   const open=sh.filter(s=>s.status!==ST.INV);
   if(!open.length)return["Invoiced","c-stage"];
   if(open.some(s=>s.status===ST.RET))return["Returned to field","c-bad"];
-  if(open.some(s=>s.status===ST.SUB))return["Awaiting GF signature","c-sch"];
+  if(open.some(s=>s.status===ST.SUB))return["Awaiting CM signature","c-sch"];
   return["Ready to bill","c-done"];}
 function openPoleForm(jid,pid){
   const j=jobById(jid);const p=poleById(j,pid);if(!p)return;
